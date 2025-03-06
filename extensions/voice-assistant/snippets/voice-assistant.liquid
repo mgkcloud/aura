@@ -1,0 +1,55 @@
+{% if block.settings.enabled %}
+  <div id="voice-assistant" 
+       data-shop-domain="{{ shop.domain }}"
+       data-position="{{ block.settings.position }}"
+       data-color="{{ block.settings.assistant_color }}">
+    <!-- Visualizer Container -->
+    <div class="voice-assistant-visualizer-container">
+      <!-- Visualizer Canvas -->
+      <div class="voice-assistant-visualizer">
+        <canvas id="voice-assistant-canvas" width="280" height="280"></canvas>
+        <div id="voice-assistant-loading" class="voice-assistant-loading hidden">
+          <div class="voice-assistant-spinner"></div>
+        </div>
+      </div>
+      
+      <!-- Chat Messages -->
+      <div class="voice-assistant-chat-bubble-container">
+        <div class="voice-assistant-chat-bubble">
+          <span id="voice-assistant-chat-message">How can I help you shop today?</span>
+        </div>
+      </div>
+      
+      <!-- Assistant Name -->
+      <div class="voice-assistant-name-display">
+        <h2 id="voice-assistant-name">Shopping Assistant</h2>
+      </div>
+    </div>
+    
+    <!-- Dialog Modal (remains the same) -->
+    <div class="voice-assistant-modal">
+      <div class="voice-assistant-header">
+        <h2>Voice Shopping Assistant</h2>
+        <button class="voice-assistant-close" aria-label="Close voice assistant">×</button>
+      </div>
+      <div class="voice-assistant-content">
+        <div class="voice-assistant-messages">
+          <div class="message assistant">
+            How can I help you shop today?
+          </div>
+        </div>
+        <div class="voice-assistant-controls">
+          <button class="voice-assistant-record">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 15C13.66 15 15 13.66 15 12V6C15 4.34 13.66 3 12 3C10.34 3 9 4.34 9 6V12C9 13.66 10.34 15 12 15Z" fill="currentColor"/>
+              <path d="M17 12C17 14.76 14.76 17 12 17C9.24 17 7 14.76 7 12H5C5 15.53 7.61 18.43 11 18.93V21H13V18.93C16.39 18.43 19 15.53 19 12H17Z" fill="currentColor"/>
+            </svg>
+            <span>Tap to speak</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <link rel="stylesheet" href="{{ 'voice-assistant.css' | asset_url }}" defer>
+  <script src="{{ 'voice-assistant.js' | asset_url }}" defer></script>
+{% endif %}

@@ -1,0 +1,280 @@
+#voice-assistant {
+  --assistant-color: attr(data-color);
+  position: fixed;
+  z-index: 999999;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+#voice-assistant[data-position="bottom-right"] {
+  bottom: 20px;
+  right: 20px;
+}
+
+#voice-assistant[data-position="bottom-left"] {
+  bottom: 20px;
+  left: 20px;
+}
+
+/* Visualizer Styles */
+.voice-assistant-visualizer-container {
+  position: relative;
+  width: 280px;
+  height: 280px;
+}
+
+.voice-assistant-visualizer {
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  position: relative;
+}
+
+#voice-assistant-canvas {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #8b5cf6, #6366f1, #ec4899);
+  box-shadow: 0 0 50px rgba(139, 92, 246, 0.3);
+  transition: transform 0.3s ease;
+  overflow: hidden;
+}
+
+.voice-assistant-visualizer:hover #voice-assistant-canvas {
+  transform: scale(1.05);
+}
+
+.voice-assistant-visualizer:active #voice-assistant-canvas {
+  transform: scale(0.95);
+}
+
+.voice-assistant-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(2px);
+  border-radius: 50%;
+}
+
+.voice-assistant-loading.hidden {
+  display: none;
+}
+
+.voice-assistant-spinner {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 4px solid rgba(255, 255, 255, 0.2);
+  border-top-color: white;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Chat Bubble Styles */
+.voice-assistant-chat-bubble-container {
+  position: absolute;
+  width: 240px;
+  top: -160px;
+  left: -80px;
+  transition: all 0.5s ease;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0;
+  animation: fadeInBubble 0.5s ease forwards;
+  animation-delay: 0.5s;
+}
+
+@keyframes fadeInBubble {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+#voice-assistant[data-position="bottom-right"] .voice-assistant-chat-bubble-container {
+  left: -80px;
+}
+
+#voice-assistant[data-position="bottom-left"] .voice-assistant-chat-bubble-container {
+  right: -80px;
+  left: auto;
+}
+
+.voice-assistant-chat-bubble {
+  background-color: white;
+  padding: 12px 16px;
+  border-radius: 18px;
+  max-width: 100%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  margin-bottom: 10px;
+  position: relative;
+  animation: fadeIn 0.3s ease;
+  transition: opacity 0.3s ease;
+}
+
+.voice-assistant-chat-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 20px;
+  width: 16px;
+  height: 16px;
+  background-color: white;
+  transform: rotate(45deg);
+  box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.05);
+  z-index: -1;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.voice-assistant-name-display {
+  position: absolute;
+  bottom: -50px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  opacity: 0;
+  animation: fadeIn 0.5s ease forwards;
+  animation-delay: 0.3s;
+}
+
+.voice-assistant-name-display h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #333;
+  transition: all 0.3s ease;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Original Modal Styles */
+.voice-assistant-modal {
+  display: none;
+  position: absolute;
+  bottom: 70px;
+  right: 0;
+  width: 380px;
+  max-width: 90vw;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  font-size: 14px;
+}
+
+#voice-assistant[data-position="bottom-left"] .voice-assistant-modal {
+  right: auto;
+  left: 0;
+}
+
+.voice-assistant-modal.open {
+  display: flex;
+  flex-direction: column;
+}
+
+.voice-assistant-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  background-color: var(--assistant-color, #000);
+  color: white;
+}
+
+.voice-assistant-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.voice-assistant-close {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.voice-assistant-content {
+  display: flex;
+  flex-direction: column;
+  height: 400px;
+  max-height: 60vh;
+}
+
+.voice-assistant-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.message {
+  padding: 12px;
+  border-radius: 8px;
+  max-width: 80%;
+}
+
+.message.assistant {
+  background-color: #f0f0f0;
+  align-self: flex-start;
+}
+
+.message.user {
+  background-color: var(--assistant-color, #000);
+  color: white;
+  align-self: flex-end;
+}
+
+.voice-assistant-controls {
+  padding: 16px;
+  border-top: 1px solid #eee;
+  display: flex;
+  justify-content: center;
+}
+
+.voice-assistant-record {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: var(--assistant-color, #000);
+  color: white;
+  border: none;
+  border-radius: 24px;
+  padding: 12px 24px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.voice-assistant-record:hover {
+  background-color: rgba(0, 0, 0, 0.8);
+}
+
+.voice-assistant-record.recording {
+  background-color: #f44336;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(244, 67, 54, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(244, 67, 54, 0);
+  }
+}

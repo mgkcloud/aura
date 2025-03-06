@@ -1,0 +1,40 @@
+{% schema %}
+{
+  "name": "Voice AI Assistant",
+  "target": "body",
+  "stylesheet": "voice-assistant.css",
+  "javascript": "voice-assistant.js",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "enabled",
+      "label": "Enable Voice Assistant",
+      "default": true
+    },
+    {
+      "type": "select",
+      "id": "position",
+      "label": "Assistant Position",
+      "options": [
+        {
+          "value": "bottom-right",
+          "label": "Bottom Right"
+        },
+        {
+          "value": "bottom-left",
+          "label": "Bottom Left"
+        }
+      ],
+      "default": "bottom-right"
+    },
+    {
+      "type": "color",
+      "id": "assistant_color",
+      "label": "Assistant Color",
+      "default": "#000000"
+    }
+  ]
+}
+{% endschema %}
+
+{% render 'voice-assistant' %}

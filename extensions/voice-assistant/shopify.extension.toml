@@ -1,0 +1,36 @@
+name = "Voice AI Assistant"
+type = "theme"
+handle = "voice-assistant"
+
+[[metafields]]
+namespace = "voice-assistant"
+key = "settings"
+type = "json"
+
+[settings]
+  [[settings.fields]]
+  key = "enabled"
+  type = "boolean"
+  name = "Enable Voice Assistant"
+  description = "Toggle the voice assistant on/off"
+  default = true
+  
+  [[settings.fields]]
+  key = "position"
+  type = "select"
+  name = "Assistant Position"
+  description = "Where the assistant button appears on the page"
+  default = "bottom-right"
+  [[settings.fields.options]]
+  value = "bottom-right"
+  name = "Bottom Right"
+  [[settings.fields.options]]
+  value = "bottom-left"
+  name = "Bottom Left"
+  
+  [[settings.fields]]
+  key = "assistant_color"
+  type = "color"
+  name = "Assistant Color"
+  description = "Primary color for the assistant interface"
+  default = "#000000"
