@@ -3,7 +3,7 @@
 client_id = "bf4c779259de11e69362150ed70a9533"
 name = "feisty-voice-studio"
 handle = "feisty-voice-studio"
-application_url = "https://subject-forums-dried-travelling.trycloudflare.com"
+application_url = "https://ross-peoples-opportunities-folder.trycloudflare.com"
 embedded = true
 
 [build]
@@ -17,9 +17,9 @@ scopes = "write_products"
 
 [auth]
 redirect_urls = [
-  "https://subject-forums-dried-travelling.trycloudflare.com/auth/callback",
-  "https://subject-forums-dried-travelling.trycloudflare.com/auth/shopify/callback",
-  "https://subject-forums-dried-travelling.trycloudflare.com/api/auth/callback"
+  "https://ross-peoples-opportunities-folder.trycloudflare.com/auth/callback",
+  "https://ross-peoples-opportunities-folder.trycloudflare.com/auth/shopify/callback",
+  "https://ross-peoples-opportunities-folder.trycloudflare.com/api/auth/callback"
 ]
 
 [webhooks]
