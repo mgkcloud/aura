@@ -357,6 +357,51 @@ This template uses [Remix](https://remix.run). The following Shopify tools are a
 - [Webhooks](https://github.com/Shopify/shopify-app-js/tree/main/packages/shopify-app-remix#authenticating-webhook-requests): Callbacks sent by Shopify when certain events occur
 - [Polaris](https://polaris.shopify.com/): Design system that enables apps to create Shopify-like experiences
 
+## Voice Assistant Feature
+
+This app includes a voice assistant that allows customers to search for products and collections using voice commands. The voice assistant is powered by Ultravox and deployed on Replicate.
+
+### Setting up the Voice Assistant
+
+1. **Deploy the Ultravox model to Replicate:**
+
+   ```bash
+   # Install the Cog CLI
+   pip install cog
+   
+   # Login to Replicate
+   cog login
+   
+   # Navigate to the ultravox-backend directory
+   cd ultravox-backend
+   
+   # Deploy the model
+   cog push r8.replicate.com/<username>/ultravox-shopify
+   ```
+
+2. **Get the Model Version ID from Replicate**
+
+   After deployment, you'll get a Model Version ID. Add this ID to your .env file:
+
+   ```
+   REPLICATE_API_TOKEN=your_replicate_api_token
+   ULTRAVOX_MODEL_VERSION=your_model_version_id
+   ```
+
+3. **Deploy the Shopify app:**
+
+   ```bash
+   npm run deploy
+   ```
+
+### How the Voice Assistant Works
+
+1. The voice assistant is embedded as a Shopify extension in the theme
+2. When a customer clicks on the assistant, they can speak their request
+3. The audio is recorded and sent to the Ultravox model via Replicate
+4. The model processes the audio and returns a response
+5. The assistant responds and can perform actions like searching for products or navigating to collections
+
 ## Resources
 
 - [Remix Docs](https://remix.run/docs/en/v1)

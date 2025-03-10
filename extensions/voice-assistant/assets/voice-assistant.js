@@ -22,7 +22,6 @@ document.addEventListener('DOMContentLoaded', () => {
     recognition: null,
     isListening: false,
     shopDomain: '',
-    apiEndpoint: 'https://your-backend-api.com/voice-assistant',
     
     // Visualizer references
     audioContext: null,
@@ -36,6 +35,10 @@ document.addEventListener('DOMContentLoaded', () => {
     hasInteracted: false,
     isLoading: false,
     isCallActive: false,
+    
+    // For audio recording
+    mediaRecorder: null,
+    audioChunks: [],
     
     // Random names for dynamic display
     names: [
@@ -379,41 +382,46 @@ document.addEventListener('DOMContentLoaded', () => {
     },
     
     initSpeechRecognition() {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      this.recognition = new SpeechRecognition();
-      this.recognition.continuous = false;
-      this.recognition.interimResults = false;
-      this.recognition.lang = 'en-US';
-      
-      this.recognition.onstart = () => {
-        this.isListening = true;
-        this.recordButton.classList.add('recording');
-        this.recordButton.querySelector('span').textContent = 'Listening...';
-        this.updateChatBubbleMessage('I\'m listening...');
-      };
-      
-      this.recognition.onend = () => {
-        this.isListening = false;
-        this.recordButton.classList.remove('recording');
-        this.recordButton.querySelector('span').textContent = 'Tap to speak';
-      };
-      
-      this.recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        this.addMessage(transcript, 'user');
-        this.processVoiceCommand(transcript);
-      };
-      
-      this.recognition.onerror = (event) => {
-        console.error('Speech recognition error', event.error);
-        if (event.error === 'no-speech') {
-          this.addMessage('I didn\'t hear anything. Please try again.', 'assistant');
-          this.updateChatBubbleMessage('I didn\'t hear anything. Please try again.');
-        } else {
-          this.addMessage('Error recognizing speech. Please try again.', 'assistant');
-          this.updateChatBubbleMessage('Error recognizing speech. Please try again.');
-        }
-      };
+      try {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        this.recognition = new SpeechRecognition();
+        this.recognition.continuous = false;
+        this.recognition.interimResults = false;
+        this.recognition.lang = 'en-US';
+        
+        this.recognition.onstart = () => {
+          this.isListening = true;
+          this.recordButton.classList.add('recording');
+          this.recordButton.querySelector('span').textContent = 'Listening...';
+          this.updateChatBubbleMessage('I\'m listening...');
+        };
+        
+        this.recognition.onend = () => {
+          this.isListening = false;
+          this.recordButton.classList.remove('recording');
+          this.recordButton.querySelector('span').textContent = 'Tap to speak';
+        };
+        
+        this.recognition.onresult = (event) => {
+          const transcript = event.results[0][0].transcript;
+          this.addMessage(transcript, 'user');
+          this.processVoiceCommand(transcript);
+        };
+        
+        this.recognition.onerror = (event) => {
+          console.error('Speech recognition error', event.error);
+          if (event.error === 'no-speech') {
+            this.addMessage('I didn\'t hear anything. Please try again.', 'assistant');
+            this.updateChatBubbleMessage('I didn\'t hear anything. Please try again.');
+          } else {
+            this.addMessage('Error recognizing speech. Please try again.', 'assistant');
+            this.updateChatBubbleMessage('Error recognizing speech. Please try again.');
+          }
+        };
+      } catch (e) {
+        console.error('Speech recognition initialization error:', e);
+        this.addMessage('Your browser does not support voice recognition.', 'assistant');
+      }
     },
     
     attachEventListeners() {
@@ -470,25 +478,75 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     },
     
-    startListening() {
-      if (!this.recognition) return;
-      
+    async startListening() {
       try {
+        // Request microphone access with more detailed constraints
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          } 
+        });
+        
+        // Choose appropriate mime type for better cross-browser compatibility
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm') 
+          ? 'audio/webm' 
+          : 'audio/mp4';
+          
+        this.mediaRecorder = new MediaRecorder(stream, { mimeType });
+        this.audioChunks = [];
+        
+        this.mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            this.audioChunks.push(event.data);
+          }
+        };
+        
+        this.mediaRecorder.onstop = async () => {
+          try {
+            const audioBlob = new Blob(this.audioChunks, { type: mimeType });
+            const reader = new FileReader();
+            
+            // Use a promise to handle FileReader async operation
+            const base64Audio = await new Promise((resolve, reject) => {
+              reader.onloadend = () => resolve(reader.result.split(',')[1]);
+              reader.onerror = reject;
+              reader.readAsDataURL(audioBlob);
+            });
+            
+            await this.processVoiceCommand(base64Audio);
+          } catch (err) {
+            console.error('Error processing recorded audio:', err);
+            this.addMessage('Error processing your voice. Please try again.', 'assistant');
+          }
+        };
+        
+        // Set a reasonable timeslice to get data as recording progresses
+        this.mediaRecorder.start(100);
         this.recognition.start();
       } catch (err) {
-        console.error('Error starting speech recognition:', err);
-        this.addMessage('Could not start speech recognition. Please try again.', 'assistant');
-        this.updateChatBubbleMessage('Could not start speech recognition. Please try again.');
+        console.error('Error accessing microphone:', err);
+        this.addMessage('Could not access microphone. Please check your permissions.', 'assistant');
       }
     },
     
     stopListening() {
-      if (!this.recognition) return;
-      
       try {
-        this.recognition.stop();
+        if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+          this.mediaRecorder.stop();
+          
+          // Clean up media stream tracks
+          if (this.mediaRecorder.stream) {
+            this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+          }
+        }
+        
+        if (this.recognition) {
+          this.recognition.stop();
+        }
       } catch (err) {
-        console.error('Error stopping speech recognition:', err);
+        console.error('Error stopping recording:', err);
       }
     },
     
@@ -506,95 +564,124 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     },
     
-    async processVoiceCommand(command) {
+    async processVoiceCommand(audioData) {
       // Add a loading message
       this.addMessage('Processing...', 'assistant');
       this.updateChatBubbleMessage('Processing...');
       this.setLoading(true);
       
       try {
-        // Call your AI backend to process the command
-        const response = await this.callAIBackend(command);
+        // Call the AI backend to process the audio
+        const response = await this.callAIBackend(audioData);
         
-        // Remove the loading message
-        this.messagesContainer.removeChild(this.messagesContainer.lastChild);
-        
-        // Add the AI response
-        this.addMessage(response.message, 'assistant');
-        
-        // Handle any actions returned from the AI
-        if (response.action === 'search') {
-          window.location.href = `/search?q=${encodeURIComponent(response.query)}`;
-        } else if (response.action === 'product') {
-          window.location.href = `/products/${response.handle}`;
-        } else if (response.action === 'collection') {
-          window.location.href = `/collections/${response.handle}`;
+        if (response.status === "pending") {
+          await this.pollForResult(response.id);
+        } else {
+          this.handleFinalResponse(response);
         }
       } catch (error) {
         console.error('Error processing voice command:', error);
         
         // Remove the loading message
-        this.messagesContainer.removeChild(this.messagesContainer.lastChild);
+        if (this.messagesContainer.lastChild) {
+          this.messagesContainer.removeChild(this.messagesContainer.lastChild);
+        }
         
         // Add an error message
         this.addMessage('Sorry, I had trouble understanding that. Please try again.', 'assistant');
-      } finally {
         this.setLoading(false);
       }
     },
     
-    async callAIBackend(command) {
-      // For demo purposes, we'll simulate a response
-      // In a real implementation, this would call your AI backend API
-      
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          // Simulate different responses based on the command
-          if (command.toLowerCase().includes('products') || 
-              command.toLowerCase().includes('find') || 
-              command.toLowerCase().includes('search')) {
-            
-            resolve({
-              message: 'Here are some products that match your search.',
-              action: 'search',
-              query: command.replace(/find|search|show me|products|product/gi, '').trim()
-            });
-          } else if (command.toLowerCase().includes('recommendation') || 
-                     command.toLowerCase().includes('suggest')) {
-            
-            resolve({
-              message: 'I recommend checking out our best sellers collection.',
-              action: 'collection',
-              handle: 'best-sellers'
-            });
-          } else {
-            resolve({
-              message: 'I can help you find products, check prices, or provide recommendations. What would you like to know?',
-              action: 'none'
-            });
-          }
-        }, 1000); // Simulate network delay
-      });
-      
-      // Real implementation would look like:
-      /*
-      const response = await fetch(this.apiEndpoint, {
+    async callAIBackend(audioData) {
+      const response = await fetch('/api/voice-assistant', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-          command,
-          shopDomain: this.shopDomain
-        })
+          command: "DUMMY", // The command is extracted from audio on the backend
+          shopDomain: this.shopDomain,
+          audio: audioData
+        }),
       });
-      
-      if (!response.ok) {
+
+      if (!response.ok && response.status !== 202) {
         throw new Error('Error communicating with AI backend');
       }
-      
+
       return await response.json();
-      */
+    },
+    
+    async pollForResult(predictionId) {
+      let attempts = 0;
+      const maxAttempts = 30; // Maximum 30 seconds of polling
+      
+      try {
+        do {
+          if (attempts >= maxAttempts) {
+            this.addMessage('Sorry, the request is taking too long. Please try again.', 'assistant');
+            this.setLoading(false);
+            return;
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          attempts++;
+          
+          // We poll through our API instead of directly to Replicate to avoid CORS and auth issues
+          const response = await fetch(`/api/voice-assistant/poll?id=${predictionId}`, {
+            method: 'GET',
+            headers: {
+              "Content-Type": "application/json"
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
+          }
+
+          const data = await response.json();
+          
+          if (data.status === "succeeded") {
+            this.handleFinalResponse(JSON.parse(data.output));
+            return;
+          } else if (data.status === "failed") {
+            // Remove the loading message
+            if (this.messagesContainer.lastChild) {
+              this.messagesContainer.removeChild(this.messagesContainer.lastChild);
+            }
+            this.addMessage('Sorry, there was an error processing your request.', 'assistant');
+            this.setLoading(false);
+            return;
+          }
+          // Continue polling for all other statuses (processing, starting, etc.)
+        } while (true);
+      } catch (error) {
+        console.error('Error polling for result:', error);
+        // Remove the loading message
+        if (this.messagesContainer.lastChild) {
+          this.messagesContainer.removeChild(this.messagesContainer.lastChild);
+        }
+        this.addMessage('Sorry, there was a problem communicating with the assistant.', 'assistant');
+        this.setLoading(false);
+      }
+    },
+    
+    handleFinalResponse(response) {
+      // Remove the loading message
+      if (this.messagesContainer.lastChild) {
+        this.messagesContainer.removeChild(this.messagesContainer.lastChild);
+      }
+      
+      this.addMessage(response.message, 'assistant');
+      this.setLoading(false);
+      
+      // Handle any actions returned from the AI
+      if (response.action === 'search') {
+        window.location.href = `/search?q=${encodeURIComponent(response.query)}`;
+      } else if (response.action === 'product') {
+        window.location.href = `/products/${response.handle}`;
+      } else if (response.action === 'collection') {
+        window.location.href = `/collections/${response.handle}`;
+      }
     },
     
     // Clean up resources when needed
@@ -609,6 +696,11 @@ document.addEventListener('DOMContentLoaded', () => {
       
       if (this.audioContext) {
         this.audioContext.close();
+      }
+      
+      // Clean up any media tracks
+      if (this.mediaRecorder && this.mediaRecorder.stream) {
+        this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
       }
     }
   };

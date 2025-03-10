@@ -13,7 +13,7 @@ include_config_on_deploy = true
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products"
+scopes = "write_products,read_product_listings,read_customers,read_content"
 
 [auth]
 redirect_urls = [
@@ -32,6 +32,14 @@ api_version = "2025-01"
   [[webhooks.subscriptions]]
   topics = [ "app/uninstalled" ]
   uri = "/webhooks/app/uninstalled"
+
+[app_env.production]
+REPLICATE_API_TOKEN = "__PLACEHOLDER__"
+ULTRAVOX_MODEL_VERSION = "__PLACEHOLDER__"
+
+[app_env.development]
+REPLICATE_API_TOKEN = "__PLACEHOLDER__"
+ULTRAVOX_MODEL_VERSION = "__PLACEHOLDER__"
 
 [pos]
 embedded = false

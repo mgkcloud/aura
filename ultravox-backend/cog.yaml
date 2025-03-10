@@ -1,0 +1,14 @@
+build:
+ gpu: true
+ python_version: "3.9"
+ system_packages:
+ - "libsndfile1"
+ - "ffmpeg"
+ python_packages:
+ - "transformers==4.40.0"
+ - "torch==2.1.2"
+ - "librosa==0.10.2"
+ - "soundfile==0.12.1"
+ - "accelerate==0.27.2"
+ - "bitsandbytes==0.41.3"
+predict: "predict.py:Predictor"
