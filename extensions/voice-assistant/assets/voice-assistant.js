@@ -86,6 +86,11 @@ document.addEventListener('DOMContentLoaded', () => {
         this.updateChatBubbleMessage('Sorry, voice recognition is not supported in your browser.');
       }
       
+      // Initialize API endpoints
+      this.initApiEndpoints().catch(error => {
+        console.warn('Failed to initialize API endpoints:', error);
+      });
+      
       // Attach event listeners
       this.attachEventListeners();
     },
@@ -387,13 +392,64 @@ document.addEventListener('DOMContentLoaded', () => {
         this.recognition = new SpeechRecognition();
         this.recognition.continuous = false;
         this.recognition.interimResults = false;
-        this.recognition.lang = 'en-US';
+        
+        // Try to detect the browser's preferred language first
+        const browserLanguage = navigator.language || navigator.userLanguage || 'en-US';
+        console.log('Browser language detected:', browserLanguage);
+        
+        // List of fallback languages to try if the browser's language isn't supported
+        const fallbackLanguages = ['en-US', 'en-GB', 'en', 'fr-FR', 'de-DE', 'es-ES'];
+        
+        // Set the initial language
+        this.recognition.lang = browserLanguage;
+        
+        // Counter to track language attempts
+        let languageAttemptIndex = 0;
         
         this.recognition.onstart = () => {
           this.isListening = true;
           this.recordButton.classList.add('recording');
           this.recordButton.querySelector('span').textContent = 'Listening...';
           this.updateChatBubbleMessage('I\'m listening...');
+        };
+        
+        // Handle language-not-supported error by trying fallback languages
+        this.recognition.onerror = (event) => {
+          console.error('Speech recognition error', event.error);
+          
+          if (event.error === 'language-not-supported') {
+            // Try the next fallback language
+            if (languageAttemptIndex < fallbackLanguages.length) {
+              const nextLanguage = fallbackLanguages[languageAttemptIndex++];
+              console.log(`Trying fallback language: ${nextLanguage}`);
+              this.recognition.lang = nextLanguage;
+              
+              // Try again with the new language
+              try {
+                this.recognition.stop();
+                setTimeout(() => this.recognition.start(), 100);
+                return;
+              } catch (e) {
+                console.error('Error restarting speech recognition:', e);
+              }
+            } else {
+              // We've tried all languages and none worked
+              this.addMessage('Sorry, speech recognition is not supported in your browser. Please type your request instead.', 'assistant');
+              this.updateChatBubbleMessage('Sorry, speech recognition is not supported in your browser.');
+            }
+          } else if (event.error === 'no-speech') {
+            this.addMessage('I didn\'t hear anything. Please try again.', 'assistant');
+            this.updateChatBubbleMessage('I didn\'t hear anything. Please try again.');
+          } else {
+            this.addMessage('Error recognizing speech. Please try again.', 'assistant');
+            this.updateChatBubbleMessage('Error recognizing speech. Please try again.');
+          }
+        };
+        
+        this.recognition.onresult = (event) => {
+          const transcript = event.results[0][0].transcript;
+          this.addMessage(transcript, 'user');
+          this.processVoiceCommand(transcript);
         };
         
         this.recognition.onend = () => {
@@ -480,71 +536,323 @@ document.addEventListener('DOMContentLoaded', () => {
     
     async startListening() {
       try {
-        // Request microphone access with more detailed constraints
+        // Show listening state immediately for better UX
+        this.isListening = true;
+        this.recordButton.classList.add('recording');
+        this.recordButton.querySelector('span').textContent = 'Listening...';
+        this.updateChatBubbleMessage('I\'m listening...');
+        
+        // Request microphone access with optimized constraints for voice
         const stream = await navigator.mediaDevices.getUserMedia({ 
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
-            autoGainControl: true
+            autoGainControl: true,
+            sampleRate: 16000, // Optimal for speech recognition
+            channelCount: 1, // Mono audio is sufficient for voice
           } 
         });
         
-        // Choose appropriate mime type for better cross-browser compatibility
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm') 
-          ? 'audio/webm' 
-          : 'audio/mp4';
-          
-        this.mediaRecorder = new MediaRecorder(stream, { mimeType });
-        this.audioChunks = [];
-        
-        this.mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            this.audioChunks.push(event.data);
-          }
-        };
-        
-        this.mediaRecorder.onstop = async () => {
-          try {
-            const audioBlob = new Blob(this.audioChunks, { type: mimeType });
-            const reader = new FileReader();
-            
-            // Use a promise to handle FileReader async operation
-            const base64Audio = await new Promise((resolve, reject) => {
-              reader.onloadend = () => resolve(reader.result.split(',')[1]);
-              reader.onerror = reject;
-              reader.readAsDataURL(audioBlob);
-            });
-            
-            await this.processVoiceCommand(base64Audio);
-          } catch (err) {
-            console.error('Error processing recorded audio:', err);
-            this.addMessage('Error processing your voice. Please try again.', 'assistant');
-          }
-        };
-        
-        // Set a reasonable timeslice to get data as recording progresses
-        this.mediaRecorder.start(100);
-        this.recognition.start();
+        // Set up WebSocket for real-time audio streaming if supported
+        if (this.setupWebSocketConnection()) {
+          // WebSocket audio streaming setup successful
+          this.startWebSocketAudioStream(stream);
+        }
+        // Fall back to MediaRecorder if WebSocket not available
+        else if (typeof MediaRecorder !== 'undefined') {
+          console.log('WebSocket streaming not available, using MediaRecorder');
+          this.startMediaRecorderStream(stream);
+        }
+        // Ultimate fallback to SpeechRecognition API
+        else if (this.recognition) {
+          console.log('Using SpeechRecognition API as fallback');
+          this.recognition.start();
+          // Set a timeout to automatically stop listening after 10 seconds
+          this.recognitionTimeout = setTimeout(() => {
+            if (this.isListening) {
+              this.stopListening();
+            }
+          }, 10000);
+        } 
+        else {
+          throw new Error('No audio input methods available');
+        }
       } catch (err) {
-        console.error('Error accessing microphone:', err);
+        console.error('Error starting audio capture:', err);
+        this.isListening = false;
+        this.recordButton.classList.remove('recording');
+        this.recordButton.querySelector('span').textContent = 'Tap to speak';
         this.addMessage('Could not access microphone. Please check your permissions.', 'assistant');
+        this.setLoading(false);
       }
+    },
+    
+    // Set up WebSocket connection for streaming audio
+    setupWebSocketConnection() {
+      try {
+        console.log('Attempting to set up SSE connection');
+        
+        // Only create a new EventSource if we don't already have one or if it's closed
+        if (!this.eventSource || this.eventSource.readyState === 2) { // 2 = CLOSED
+          // For app proxy through Shopify
+          const wsEndpoint = `/apps/voice/ws?shop=${encodeURIComponent(this.shopDomain)}`;
+          console.log('Setting up EventSource at:', wsEndpoint);
+          
+          // Create EventSource with credentials
+          this.eventSource = new EventSource(wsEndpoint);
+          
+          this.eventSource.onopen = () => {
+            console.log('EventSource connected successfully');
+          };
+          
+          this.eventSource.onmessage = (event) => {
+            try {
+              console.log('Raw SSE message received:', event.data);
+              
+              // Handle special case for heartbeats
+              if (event.data.startsWith(':')) {
+                console.log('Heartbeat received');
+                return;
+              }
+              
+              const data = JSON.parse(event.data);
+              console.log('Server sent message:', data.type);
+              
+              if (data.type === 'result' && data.result) {
+                console.log('Received result from server');
+                // Handle result from server
+                this.handleFinalResponse(data.result);
+                // Automatically stop listening when we get a response
+                this.stopListening();
+              } else if (data.type === 'error') {
+                console.error('Server error:', data.message);
+                this.addMessage('Error: ' + (data.message || 'Unknown server error'), 'assistant');
+                this.setLoading(false);
+                this.stopListening();
+              } else if (data.type === 'connected') {
+                console.log('SSE connection established with server');
+              } else if (data.type === 'disconnected') {
+                console.log('SSE connection closed by server');
+              } else if (data.type === 'reconnecting') {
+                console.log('Server is reconnecting, attempt:', data.attempt);
+              }
+            } catch (e) {
+              console.error('Error parsing server message:', e);
+            }
+          };
+          
+          this.eventSource.onerror = (error) => {
+            console.error('EventSource error:', error);
+            
+            // Don't close on first error - allow automatic reconnection
+            if (this.eventSource.readyState === 2) { // CLOSED
+              console.log('EventSource connection closed due to error');
+              // If we're still listening, let the user know there was a problem
+              if (this.isListening) {
+                this.addMessage('Connection to server lost. Please try again.', 'assistant');
+                this.setLoading(false);
+                this.stopListening();
+              }
+            }
+          };
+        }
+        
+        // Generate a unique request ID for this audio session
+        this.currentRequestId = `req-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        console.log('Generated request ID:', this.currentRequestId);
+        
+        return true;
+      } catch (e) {
+        console.error('Error setting up WebSocket connection:', e);
+        return false;
+      }
+    },
+    
+    // Stream audio via WebSockets in chunks
+    startWebSocketAudioStream(stream) {
+      // Set up audio context and processor
+      this.audioContext = new (window.AudioContext || window.webkitAudioContext)({
+        sampleRate: 16000, // Match the sample rate we requested
+      });
+      
+      const source = this.audioContext.createMediaStreamSource(stream);
+      this.stream = stream;
+      
+      // Create processor node to access raw audio data
+      const processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+      
+      processor.onaudioprocess = (e) => {
+        if (!this.isListening) return;
+        
+        // Get audio data
+        const inputData = e.inputBuffer.getChannelData(0);
+        
+        // Convert float32 array to Int16 to reduce size
+        const pcmData = new Int16Array(inputData.length);
+        for (let i = 0; i < inputData.length; i++) {
+          pcmData[i] = inputData[i] * 0x7FFF;
+        }
+        
+        // Convert to Base64
+        const base64Audio = this.arrayBufferToBase64(pcmData.buffer);
+        
+        // Send to server
+        this.sendAudioChunk(base64Audio);
+      };
+      
+      // Connect nodes
+      source.connect(processor);
+      processor.connect(this.audioContext.destination);
+      
+      this.audioProcessor = processor;
+    },
+    
+    // Convert ArrayBuffer to Base64
+    arrayBufferToBase64(buffer) {
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return window.btoa(binary);
+    },
+    
+    // Send audio chunk to server
+    sendAudioChunk(base64Audio) {
+      if (!base64Audio) return;
+      
+      try {
+        // For app proxy routes through Shopify
+        const audioEndpoint = '/apps/voice/audio';
+        console.log('Sending audio chunk to:', audioEndpoint);
+        
+        fetch(audioEndpoint, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            audio: base64Audio,
+            shopDomain: this.shopDomain,
+            requestId: this.currentRequestId
+          }),
+        }).catch(error => {
+          console.error('Error sending audio chunk:', error);
+        });
+      } catch (error) {
+        console.error('Error sending audio chunk:', error);
+      }
+    },
+    
+    // Fallback to MediaRecorder for browsers without good WebSocket support
+    startMediaRecorderStream(stream) {
+      // Choose appropriate mime type for better cross-browser compatibility
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') 
+        ? 'audio/webm' 
+        : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+        
+      this.mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      this.audioChunks = [];
+      this.stream = stream;
+      
+      this.mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          this.audioChunks.push(event.data);
+        }
+      };
+      
+      this.mediaRecorder.onstop = async () => {
+        try {
+          const audioBlob = new Blob(this.audioChunks, { type: mimeType || 'audio/webm' });
+          const reader = new FileReader();
+          
+          // Use a promise to handle FileReader async operation
+          const base64Audio = await new Promise((resolve, reject) => {
+            reader.onloadend = () => {
+              // Split by comma and get the base64 part if it's a data URL
+              const result = reader.result;
+              if (typeof result === 'string' && result.includes(',')) {
+                resolve(result.split(',')[1]);
+              } else {
+                resolve(result);
+              }
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(audioBlob);
+          });
+          
+          console.log('Audio recorded successfully, sending to backend...');
+          await this.processVoiceCommand(base64Audio);
+        } catch (err) {
+          console.error('Error processing recorded audio:', err);
+          this.addMessage('Error processing your voice. Please try again.', 'assistant');
+          this.setLoading(false);
+        }
+      };
+      
+      // Set a reasonable timeslice to get data as recording progresses
+      this.mediaRecorder.start(100);
+      
+      // Start a timeout to automatically stop recording after 10 seconds
+      this.recordingTimeout = setTimeout(() => {
+        if (this.isListening) {
+          this.stopListening();
+        }
+      }, 10000);
     },
     
     stopListening() {
       try {
-        if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-          this.mediaRecorder.stop();
-          
-          // Clean up media stream tracks
-          if (this.mediaRecorder.stream) {
-            this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        // Clear any timeouts
+        if (this.recordingTimeout) {
+          clearTimeout(this.recordingTimeout);
+          this.recordingTimeout = null;
+        }
+        
+        if (this.recognitionTimeout) {
+          clearTimeout(this.recognitionTimeout);
+          this.recognitionTimeout = null;
+        }
+        
+        // Stop WebSocket audio streaming
+        if (this.audioProcessor && this.audioContext) {
+          try {
+            this.audioProcessor.disconnect();
+            this.audioContext.close().catch(e => console.warn('Error closing AudioContext:', e));
+            this.audioProcessor = null;
+          } catch (e) {
+            console.warn('Error stopping audio processor:', e);
           }
         }
         
-        if (this.recognition) {
-          this.recognition.stop();
+        // Stop MediaRecorder if active
+        if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+          console.log('Stopping MediaRecorder');
+          try {
+            this.mediaRecorder.stop();
+          } catch (e) {
+            console.warn('Error stopping MediaRecorder:', e);
+          }
         }
+        
+        // Stop SpeechRecognition if active
+        if (this.recognition) {
+          console.log('Stopping SpeechRecognition');
+          try {
+            this.recognition.stop();
+          } catch (e) {
+            console.warn('Error stopping SpeechRecognition:', e);
+          }
+        }
+        
+        // Clean up media stream tracks
+        if (this.stream) {
+          this.stream.getTracks().forEach(track => track.stop());
+          this.stream = null;
+        }
+        
+        // Update UI state
+        this.isListening = false;
+        this.recordButton.classList.remove('recording');
+        this.recordButton.querySelector('span').textContent = 'Tap to speak';
       } catch (err) {
         console.error('Error stopping recording:', err);
       }
@@ -564,26 +872,122 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     },
     
-    async processVoiceCommand(audioData) {
+    // Initialize API endpoints through Shopify App Proxy
+    async initApiEndpoints() {
+      // Using Shopify App Proxy format: /{prefix}/{subpath}
+      this.apiEndpoint = '/apps/voice';
+      console.log('Using App Proxy endpoint:', this.apiEndpoint);
+      
+      // Check for browser capabilities
+      this.hasMediaRecorderSupport = typeof MediaRecorder !== 'undefined';
+      this.hasAudioContextSupport = typeof (window.AudioContext || window.webkitAudioContext) !== 'undefined';
+      this.hasEventSourceSupport = typeof EventSource !== 'undefined';
+      
+      console.log('Browser capabilities:');
+      console.log('- MediaRecorder support:', this.hasMediaRecorderSupport ? 'Yes' : 'No');
+      console.log('- AudioContext support:', this.hasAudioContextSupport ? 'Yes' : 'No');
+      console.log('- EventSource support:', this.hasEventSourceSupport ? 'Yes' : 'No');
+      
+      // Detect mobile devices
+      this.isMobile = this.detectMobileDevice();
+      console.log('Mobile device:', this.isMobile ? 'Yes' : 'No');
+      
+      return Promise.resolve({
+        apiEndpoint: this.apiEndpoint
+      });
+    },
+    
+    // Detect if user is on a mobile device
+    detectMobileDevice() {
+      const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+      
+      // Check for common mobile patterns
+      if (/android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent.toLowerCase())) {
+        return true;
+      }
+      
+      // iOS detection needs special handling
+      if (/iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream) {
+        return true;
+      }
+      
+      // Check screen size as a fallback
+      if (window.innerWidth <= 800 && window.innerHeight <= 900) {
+        return true;
+      }
+      
+      return false;
+    },
+    
+    // Store pending requests by ID
+    pendingRequests: {},
+    
+    async processVoiceCommand(audioDataOrTranscript) {
       // Add a loading message
       this.addMessage('Processing...', 'assistant');
       this.updateChatBubbleMessage('Processing...');
       this.setLoading(true);
       
       try {
-        // Call the AI backend to process the audio
-        const response = await this.callAIBackend(audioData);
+        // Make sure we've initialized our API endpoints
+        if (!this.apiEndpoint) {
+          await this.initApiEndpoints();
+        }
         
-        if (response.status === "pending") {
-          await this.pollForResult(response.id);
+        // Determine if we're processing audio or text
+        const isAudioData = typeof audioDataOrTranscript === 'string' && 
+          (audioDataOrTranscript.startsWith('data:audio') || 
+           // Check if it's a base64 string (likely audio data)
+           /^[A-Za-z0-9+/=]+$/.test(audioDataOrTranscript));
+        
+        if (isAudioData) {
+          console.log('Processing as audio data');
+          // Send audio directly to app proxy endpoint
+          try {
+            await this.processAudioDirectly(audioDataOrTranscript);
+          } catch (error) {
+            console.warn('App proxy processing failed:', error);
+            this.addMessage('Sorry, I had trouble processing your request. Please try again.', 'assistant');
+            this.setLoading(false);
+          }
         } else {
-          this.handleFinalResponse(response);
+          // It's a text transcript
+          console.log('Processing as text transcript:', audioDataOrTranscript);
+          
+          // Show the user's message
+          if (this.messagesContainer.lastChild.classList.contains('assistant')) {
+            this.messagesContainer.removeChild(this.messagesContainer.lastChild);
+          }
+          
+          // Send text to the API directly
+          try {
+            const response = await fetch(this.apiEndpoint, {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({
+                command: audioDataOrTranscript,
+                shopDomain: this.shopDomain,
+                audio: '' // Empty audio for text-based requests
+              }),
+            });
+            
+            if (!response.ok) {
+              throw new Error(`API error: ${response.status}`);
+            }
+            
+            const result = await response.json();
+            this.handleFinalResponse(result);
+          } catch (error) {
+            console.warn('Text processing failed:', error);
+            this.addMessage('Sorry, I had trouble processing your request. Please try again.', 'assistant');
+            this.setLoading(false);
+          }
         }
       } catch (error) {
-        console.error('Error processing voice command:', error);
+        console.error('Error processing command:', error);
         
         // Remove the loading message
-        if (this.messagesContainer.lastChild) {
+        if (this.messagesContainer.lastChild && this.messagesContainer.lastChild.classList.contains('assistant')) {
           this.messagesContainer.removeChild(this.messagesContainer.lastChild);
         }
         
@@ -593,8 +997,61 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     },
     
-    async callAIBackend(audioData) {
-      const response = await fetch('/api/voice-assistant', {
+    // Send audio directly to App Proxy endpoint
+    async processAudioDirectly(audioData) {
+      console.log('Processing audio through App Proxy:', this.apiEndpoint);
+      return new Promise(async (resolve, reject) => {
+        try {
+          // Add logging to debug request
+          console.log(`Sending request to: ${this.apiEndpoint}`);
+          console.log(`Request includes audio data: ${!!audioData}`);
+          console.log(`Request includes shop domain: ${!!this.shopDomain}`);
+          
+          // Send audio to our app proxy endpoint
+          const response = await fetch(this.apiEndpoint, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              audio: audioData,
+              shopDomain: this.shopDomain
+            }),
+          });
+          
+          console.log(`Response status: ${response.status}`);
+          
+          if (!response.ok) {
+            let errorMessage = 'Error processing audio';
+            try {
+              const errorData = await response.json();
+              errorMessage = errorData.error || errorMessage;
+              console.error('Error details:', errorData);
+            } catch (e) {
+              // If response isn't JSON, use status text
+              errorMessage = `Error (${response.status}): ${response.statusText}`;
+              console.error('Error parsing error response:', e);
+            }
+            reject(new Error(errorMessage));
+            return;
+          }
+          
+          // Get the result directly from the response
+          const result = await response.json();
+          console.log('Successfully got result from API');
+          this.handleFinalResponse(result);
+          resolve();
+        } catch (error) {
+          console.error('Error processing audio:', error);
+          reject(error);
+        }
+      });
+    },
+    
+    // Legacy method - kept for fallback compatibility
+    async callAIBackend(audioData, apiEndpoint) {
+      // Use app proxy endpoint if none provided
+      const endpoint = apiEndpoint || this.apiEndpoint;
+      
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -611,7 +1068,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return await response.json();
     },
     
-    async pollForResult(predictionId) {
+    async pollForResult(predictionId, apiEndpoint = '/api/voice-assistant') {
       let attempts = 0;
       const maxAttempts = 30; // Maximum 30 seconds of polling
       
@@ -626,8 +1083,12 @@ document.addEventListener('DOMContentLoaded', () => {
           await new Promise(resolve => setTimeout(resolve, 1000));
           attempts++;
           
-          // We poll through our API instead of directly to Replicate to avoid CORS and auth issues
-          const response = await fetch(`/api/voice-assistant/poll?id=${predictionId}`, {
+          // We poll through our API endpoint
+          const pollEndpoint = apiEndpoint.endsWith('/poll') 
+            ? apiEndpoint 
+            : `${apiEndpoint}/poll`;
+            
+          const response = await fetch(`${pollEndpoint}?id=${predictionId}`, {
             method: 'GET',
             headers: {
               "Content-Type": "application/json"
@@ -694,14 +1155,44 @@ document.addEventListener('DOMContentLoaded', () => {
         clearInterval(this.nameInterval);
       }
       
+      // Close EventSource if open
+      if (this.eventSource) {
+        this.eventSource.close();
+        this.eventSource = null;
+      }
+      
+      // Clear any active timeouts
+      if (this.recordingTimeout) {
+        clearTimeout(this.recordingTimeout);
+      }
+      
+      if (this.recognitionTimeout) {
+        clearTimeout(this.recognitionTimeout);
+      }
+      
+      // Clean up audio resources
       if (this.audioContext) {
-        this.audioContext.close();
+        try {
+          this.audioContext.close();
+        } catch (e) {
+          console.warn('Error closing AudioContext:', e);
+        }
+      }
+      
+      if (this.audioProcessor) {
+        try {
+          this.audioProcessor.disconnect();
+        } catch (e) {
+          console.warn('Error disconnecting audio processor:', e);
+        }
       }
       
       // Clean up any media tracks
-      if (this.mediaRecorder && this.mediaRecorder.stream) {
-        this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+      if (this.stream) {
+        this.stream.getTracks().forEach(track => track.stop());
       }
+      
+      console.log('Voice assistant resources cleaned up');
     }
   };
   

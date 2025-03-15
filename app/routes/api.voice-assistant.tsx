@@ -1,11 +1,24 @@
-import { json, type ActionFunctionArgs } from "@remix-run/node";
+import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
+import { getShopifyCartData } from "../livekit-proxy.server";
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  await authenticate.public.checkSessionCookie(request);
+  
+  return json({
+    websocketUrl: process.env.LIVEKIT_URL || "ws://localhost:7880"
+  });
+};
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   await authenticate.public.checkSessionCookie(request);
   const { command, shopDomain, audio } = await request.json();
 
   try {
+    // Get cart context data for better assistant responses
+    const cartData = await getShopifyCartData(request);
+    
+    // Call Replicate API directly (for clients not using the WebSocket connection)
     const response = await fetch("https://api.replicate.com/v1/predictions", {
       method: "POST",
       headers: {
@@ -17,7 +30,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         input: {
           command,
           audio,
-          shop_domain: shopDomain
+          shop_domain: shopDomain,
+          cart_context: cartData ? JSON.stringify(cartData.items) : ''
         }
       }),
     });

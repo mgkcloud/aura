@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Page,
   Layout,
@@ -17,15 +17,70 @@ import {
   rgbToHsb,
   rgbString,
   ContextualSaveBar,
+  Spinner,
+  Box,
 } from "@shopify/polaris";
+import { json, type LoaderFunctionArgs } from "@remix-run/node";
+import { useLoaderData } from "@remix-run/react";
 import { authenticate } from "../shopify.server";
+import { getShopifyCartData } from "../livekit-proxy.server";
 
-export const loader = async ({ request }) => {
-  await authenticate.admin(request);
-  return null;
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const { session, admin } = await authenticate.admin(request);
+  
+  // Fetch cart data to provide context to the voice assistant
+  const cartData = await getShopifyCartData(request);
+  
+  // Set up the metafield with the config URL
+  const appHost = process.env.SHOPIFY_APP_URL || 'http://localhost:3000';
+  const configUrl = `${appHost}/api/voice-assistant/config`;
+  
+  try {
+    // Set a metafield that the theme extension can access
+    await admin.graphql(`
+      mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
+        metafieldsSet(metafields: $metafields) {
+          metafields {
+            id
+            namespace
+            key
+            value
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `, {
+      variables: {
+        metafields: [
+          {
+            ownerId: `gid://shopify/App/${process.env.SHOPIFY_VOICE_ASSISTANT_ID}`,
+            namespace: "voice_assistant",
+            key: "config_url",
+            value: configUrl,
+            type: "single_line_text_field"
+          }
+        ]
+      }
+    });
+  } catch (error) {
+    console.error("Error setting metafield:", error);
+  }
+  
+  return json({
+    shop: session.shop,
+    liveKitUrl: process.env.LIVEKIT_URL || "ws://localhost:7880",
+    liveKitKey: process.env.LIVEKIT_KEY || "",
+    cartData,
+    configUrl
+  });
 };
 
 export default function VoiceAssistantSettings() {
+  const { shop, liveKitUrl, liveKitKey, cartData, configUrl } = useLoaderData<typeof loader>();
+  
   const [settings, setSettings] = useState({
     assistantName: "Shopping Assistant",
     welcomeMessage: "How can I help you shop today?",
@@ -40,6 +95,14 @@ export default function VoiceAssistantSettings() {
 
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [audioStreamActive, setAudioStreamActive] = useState(false);
+  const [testingMode, setTestingMode] = useState(false);
+  const [responseMessage, setResponseMessage] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [wsConnection, setWsConnection] = useState<WebSocket | null>(null);
+  const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
 
   // Mock loading of settings
   useEffect(() => {
@@ -58,6 +121,155 @@ export default function VoiceAssistantSettings() {
       });
     }, 500);
   }, []);
+  
+  // Initialize WebSocket connection
+  useEffect(() => {
+    if (!testingMode) return;
+    
+    try {
+      const ws = new WebSocket(liveKitUrl);
+      
+      ws.onopen = () => {
+        console.log('WebSocket connection established');
+        // Initialize session
+        ws.send(JSON.stringify({
+          type: 'init',
+          participantId: `admin-${Date.now()}`,
+          shopId: shop
+        }));
+        
+        // Send cart data if available
+        if (cartData && cartData.items.length > 0) {
+          ws.send(JSON.stringify({
+            type: 'cart',
+            shopId: shop,
+            items: cartData.items
+          }));
+        }
+      };
+      
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('WebSocket message received:', data);
+          
+          if (data.type === 'init_ack') {
+            console.log('Connection initialized with ID:', data.participantId);
+          } else if (data.type === 'result') {
+            setResponseMessage(data.result.message);
+            setIsProcessing(false);
+          } else if (data.type === 'error') {
+            console.error('Error from server:', data.error);
+            setResponseMessage(`Error: ${data.error}`);
+            setIsProcessing(false);
+          }
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      };
+      
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setResponseMessage('Error connecting to server');
+      };
+      
+      ws.onclose = () => {
+        console.log('WebSocket connection closed');
+        setAudioStreamActive(false);
+      };
+      
+      setWsConnection(ws);
+      
+      return () => {
+        ws.close();
+      };
+    } catch (error) {
+      console.error('Error setting up WebSocket:', error);
+    }
+  }, [testingMode, shop, liveKitUrl]);
+
+  // Initialize audio context and stream when testing mode is enabled
+  const startAudioStream = useCallback(async () => {
+    if (!wsConnection || wsConnection.readyState !== WebSocket.OPEN) {
+      setResponseMessage('WebSocket not connected');
+      return;
+    }
+    
+    try {
+      // Request microphone access
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+      
+      // Create audio context
+      const context = new AudioContext();
+      
+      // Choose appropriate mime type
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') 
+        ? 'audio/webm' 
+        : 'audio/mp4';
+      
+      // Create media recorder
+      const recorder = new MediaRecorder(stream, { mimeType });
+      
+      // Handle data available events
+      recorder.ondataavailable = async (event) => {
+        if (event.data.size > 0 && wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+          // Convert blob to base64
+          const reader = new FileReader();
+          reader.readAsDataURL(event.data);
+          reader.onloadend = () => {
+            const base64data = reader.result?.toString().split(',')[1];
+            if (base64data) {
+              wsConnection.send(JSON.stringify({
+                type: 'audio',
+                data: base64data,
+                requestId: Date.now().toString()
+              }));
+            }
+          };
+        }
+      };
+      
+      // Start recording
+      recorder.start(1000); // Send audio chunks every second
+      
+      setAudioContext(context);
+      setMediaRecorder(recorder);
+      setAudioStream(stream);
+      setAudioStreamActive(true);
+      setIsProcessing(true);
+      setResponseMessage('Listening...');
+      
+    } catch (error) {
+      console.error('Error starting audio stream:', error);
+      setResponseMessage('Error accessing microphone');
+    }
+  }, [wsConnection]);
+  
+  // Stop audio stream
+  const stopAudioStream = useCallback(() => {
+    if (mediaRecorder) {
+      mediaRecorder.stop();
+    }
+    
+    if (audioStream) {
+      audioStream.getTracks().forEach(track => track.stop());
+    }
+    
+    if (audioContext) {
+      audioContext.close();
+    }
+    
+    setAudioStreamActive(false);
+    setAudioContext(null);
+    setMediaRecorder(null);
+    setAudioStream(null);
+  }, [mediaRecorder, audioStream, audioContext]);
 
   const handleChange = (field) => (value) => {
     setSettings((prev) => ({
@@ -186,6 +398,71 @@ export default function VoiceAssistantSettings() {
                   </BlockStack>
                 </FormLayout>
               </Form>
+            </Card.Section>
+          </Card>
+          
+          <div style={{ marginTop: "20px" }}></div>
+          
+          <Card>
+            <Card.Section>
+              <BlockStack gap="400">
+                <Text variant="headingMd" as="h2">
+                  Test Live Voice Assistant
+                </Text>
+                <Text variant="bodyMd" as="p">
+                  Test the voice assistant with real-time audio streaming. This will use the Ultravox model via Replicate to process your voice commands.
+                </Text>
+                
+                <BlockStack gap="400">
+                  <Button 
+                    onClick={() => setTestingMode(!testingMode)}
+                    primary={!testingMode}
+                    disabled={testingMode && audioStreamActive}
+                  >
+                    {testingMode ? "Exit Testing Mode" : "Enter Testing Mode"}
+                  </Button>
+                  
+                  {testingMode && (
+                    <div style={{ marginTop: '16px' }}>
+                      <BlockStack gap="400">
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <Button 
+                            onClick={audioStreamActive ? stopAudioStream : startAudioStream}
+                            primary={!audioStreamActive}
+                            disabled={!testingMode || (audioStreamActive && isProcessing)}
+                          >
+                            {audioStreamActive ? "Stop Listening" : "Start Listening"}
+                          </Button>
+                          
+                          {isProcessing && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <Spinner size="small" />
+                              <Text>Processing...</Text>
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div style={{ 
+                          padding: '16px', 
+                          border: '1px solid #ddd', 
+                          borderRadius: '8px',
+                          backgroundColor: '#f9f9f9',
+                          minHeight: '80px'
+                        }}>
+                          <Text variant="headingMd" as="h3">Response:</Text>
+                          <Text>{responseMessage || 'No response yet'}</Text>
+                        </div>
+                        
+                        <div>
+                          <Text variant="bodyMd" as="p">Cart Items: {cartData.items.length}</Text>
+                          <Text variant="bodyMd" as="p">Shop: {shop}</Text>
+                          <Text variant="bodyMd" as="p">WebSocket: {wsConnection && wsConnection.readyState === WebSocket.OPEN ? 'Connected' : 'Disconnected'}</Text>
+                        </div>
+                      </BlockStack>
+                    </div>
+                  )}
+                </BlockStack>
+              </BlockStack>
             </Card.Section>
           </Card>
         </Layout.Section>

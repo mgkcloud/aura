@@ -359,48 +359,135 @@ This template uses [Remix](https://remix.run). The following Shopify tools are a
 
 ## Voice Assistant Feature
 
-This app includes a voice assistant that allows customers to search for products and collections using voice commands. The voice assistant is powered by Ultravox and deployed on Replicate.
+This app includes a voice assistant that allows customers to search for products and collections using voice commands. The voice assistant is powered by Ultravox and deployed on Replicate, with LiveKit for continuous audio streaming.
 
 ### Setting up the Voice Assistant
 
-1. **Deploy the Ultravox model to Replicate:**
+#### 1. Configure Environment Variables
 
-   ```bash
-   # Install the Cog CLI
-   pip install cog
-   
-   # Login to Replicate
-   cog login
-   
-   # Navigate to the ultravox-backend directory
-   cd ultravox-backend
-   
-   # Deploy the model
-   cog push r8.replicate.com/<username>/ultravox-shopify
+Copy the example environment file and configure it with your credentials:
+
+```bash
+cp .env.example .env
+```
+
+Then edit the `.env` file to include:
+- Your Shopify API credentials
+- Your Replicate API token
+- The Ultravox model version ID (after deployment)
+- LiveKit configuration
+
+#### 2. Deploy the Ultravox Model to Replicate
+
+Use our built-in script to deploy the model:
+
+```bash
+npm run deploy:replicate
+```
+
+Or follow these manual steps:
+
+```bash
+# Install the Cog CLI
+pip install cog
+
+# Login to Replicate
+cog login
+
+# Navigate to the ultravox-backend directory
+cd ultravox-backend
+
+# Deploy the model
+cog push r8.replicate.com/<username>/ultravox-shopify
+```
+
+After deployment, copy the Model Version ID to your `.env` file as `ULTRAVOX_MODEL_VERSION`.
+
+#### 3. Start the LiveKit Proxy Server
+
+You have several options to run the LiveKit proxy:
+
+**Option A: Direct Node process**
+```bash
+npm run start:livekit-proxy
+```
+
+**Option B: Using Screen (runs in background)**
+```bash
+npm run start:livekit-proxy:screen
+# To view logs:
+screen -r livekit-proxy
+# To detach: Ctrl+A, D
+```
+
+**Option C: Using Docker**
+```bash
+npm run start:livekit-proxy:docker
+```
+
+#### 4. Start the Shopify App
+
+```bash
+npm run dev
+```
+
+#### 5. Deploy to Production
+
+Once everything is working locally:
+
+```bash
+npm run deploy
+```
+
+### Shopify App Proxy Configuration
+
+The Voice Assistant uses Shopify's App Proxy feature to communicate securely with your backend from the storefront theme. This allows the voice assistant to work on your storefront despite Shopify's sandbox restrictions.
+
+Here's how it's configured:
+
+1. In `shopify.app.toml`, the app proxy is set up with:
+   ```
+   [app_proxy]
+   url = "https://your-app-url.com/proxy"
+   prefix = "apps"
+   subpath = "voice"
    ```
 
-2. **Get the Model Version ID from Replicate**
+2. This creates a proxy URL pattern: `/apps/voice/*` on your Shopify storefront (note: "apps" is the prefix, but in the URL it appears as "apps")
 
-   After deployment, you'll get a Model Version ID. Add this ID to your .env file:
+3. The voice assistant JavaScript in the theme extension uses this URL format to make requests to your app
 
-   ```
-   REPLICATE_API_TOKEN=your_replicate_api_token
-   ULTRAVOX_MODEL_VERSION=your_model_version_id
-   ```
+4. In your Remix app, these requests are handled by the route file at `/app/routes/proxy.tsx`
+   - This file handles all app proxy requests and processes audio data from the voice assistant
 
-3. **Deploy the Shopify app:**
+The app proxy authenticates requests using Shopify's HMAC signature, ensuring that only valid requests from your store are processed.
 
-   ```bash
-   npm run deploy
-   ```
+### Troubleshooting
+
+If you encounter WebSocket connection errors:
+1. Ensure the LiveKit proxy server is running on port 7880
+2. Check that your browser supports WebSockets
+3. If using a different port or hostname, update the `websocketUrl` in `extensions/voice-assistant/assets/voice-assistant.js`
+
+For Replicate issues:
+1. Verify your Replicate API token is correct
+2. Ensure your model was properly deployed and the model version ID is correct
+
+For App Proxy issues:
+1. Verify your app proxy configuration in `shopify.app.toml`
+2. Check that your frontend is calling the correct app proxy endpoint (`/apps/voice/api/process`)
+3. Make sure you're using `authenticate.public.appProxy()` in your route handlers
+4. Confirm your ngrok or tunnel URL matches the one in your app settings
 
 ### How the Voice Assistant Works
 
 1. The voice assistant is embedded as a Shopify extension in the theme
-2. When a customer clicks on the assistant, they can speak their request
-3. The audio is recorded and sent to the Ultravox model via Replicate
-4. The model processes the audio and returns a response
-5. The assistant responds and can perform actions like searching for products or navigating to collections
+2. When a customer clicks on the assistant, they can speak voice commands
+3. The audio is captured and sent to your app backend through the Shopify App Proxy
+4. Your app processes the audio using the LiveKit proxy and Ultravox model on Replicate
+5. The model converts speech to intent and returns structured responses
+6. The assistant displays responses and can perform actions like searching for products
+7. Context about the user's shopping cart is included to improve recommendations
 
 ## Resources
 

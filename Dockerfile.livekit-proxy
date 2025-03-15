@@ -1,0 +1,20 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy necessary files
+COPY package.json package-lock.json ./
+COPY app/livekit-proxy.server.ts ./
+
+# Install dependencies
+RUN npm install ws
+
+# Create a simple server file
+RUN echo 'const proxy = require("./livekit-proxy.server"); \n\
+proxy.initLiveKitProxy().then(() => { \n\
+  console.log("LiveKit proxy server started"); \n\
+});' > server.js
+
+EXPOSE 7880
+
+CMD ["node", "server.js"]

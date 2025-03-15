@@ -7,6 +7,10 @@ import {
 } from "@remix-run/node";
 import { isbot } from "isbot";
 import { addDocumentResponseHeaders } from "./shopify.server";
+import { initLiveKitProxy } from "./livekit-proxy.server";
+
+// Initialize LiveKit proxy server when the application starts
+let livekitProxyInitialized = false;
 
 export const streamTimeout = 5000;
 
@@ -16,6 +20,17 @@ export default async function handleRequest(
   responseHeaders: Headers,
   remixContext: EntryContext
 ) {
+  // Initialize LiveKit proxy if not already done
+  if (!livekitProxyInitialized) {
+    try {
+      await initLiveKitProxy();
+      livekitProxyInitialized = true;
+      console.log('LiveKit proxy initialized successfully');
+    } catch (error) {
+      console.error('Failed to initialize LiveKit proxy:', error);
+    }
+  }
+
   addDocumentResponseHeaders(request, responseHeaders);
   const userAgent = request.headers.get("user-agent");
   const callbackName = isbot(userAgent ?? '')

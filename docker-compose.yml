@@ -1,0 +1,15 @@
+version: '3'
+
+services:
+  livekit-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.livekit-proxy
+    ports:
+      - "7880:7880"
+    environment:
+      - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}
+      - ULTRAVOX_MODEL_VERSION=${ULTRAVOX_MODEL_VERSION}
+    restart: unless-stopped
+    volumes:
+      - ./app:/app

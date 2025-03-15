@@ -3,7 +3,7 @@
 client_id = "bf4c779259de11e69362150ed70a9533"
 name = "feisty-voice-studio"
 handle = "feisty-voice-studio"
-application_url = "https://ross-peoples-opportunities-folder.trycloudflare.com"
+application_url = "https://layer-illinois-exams-falling.trycloudflare.com"
 embedded = true
 
 [build]
@@ -17,9 +17,9 @@ scopes = "write_products,read_product_listings,read_customers,read_content"
 
 [auth]
 redirect_urls = [
-  "https://ross-peoples-opportunities-folder.trycloudflare.com/auth/callback",
-  "https://ross-peoples-opportunities-folder.trycloudflare.com/auth/shopify/callback",
-  "https://ross-peoples-opportunities-folder.trycloudflare.com/api/auth/callback"
+  "https://layer-illinois-exams-falling.trycloudflare.com/auth/callback",
+  "https://layer-illinois-exams-falling.trycloudflare.com/auth/shopify/callback",
+  "https://layer-illinois-exams-falling.trycloudflare.com/api/auth/callback"
 ]
 
 [webhooks]
@@ -43,3 +43,8 @@ ULTRAVOX_MODEL_VERSION = "__PLACEHOLDER__"
 
 [pos]
 embedded = false
+
+[app_proxy]
+url = "https://layer-illinois-exams-falling.trycloudflare.com/proxy"
+prefix = "apps"
+subpath = "voice"
