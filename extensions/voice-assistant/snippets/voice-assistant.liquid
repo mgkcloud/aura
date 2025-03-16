@@ -50,6 +50,9 @@
       </div>
     </div>
   </div>
-  <link rel="stylesheet" href="{{ 'voice-assistant.css' | asset_url }}" defer>
-  <script src="{{ 'voice-assistant.js' | asset_url }}" defer></script>
+  <link rel="stylesheet" href="{{ 'voice-assistant.css' | asset_url }}">
+  <!-- Load integration first so classes are available -->
+  <script src="{{ 'voice-assistant-integration.js' | asset_url }}"></script>
+  <!-- Load main script after integration is ready -->
+  <script src="{{ 'voice-assistant.js' | asset_url }}"></script>
 {% endif %}

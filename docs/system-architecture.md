@@ -2,7 +2,7 @@
 
 ## System Overview
 
-The Voice AI Shopping Assistant is built on a modern, scalable architecture that integrates with the Shopify platform and leverages external AI services for voice processing. This document outlines the key components of the system and how they interact.
+The Voice AI Shopping Assistant is built on a modern, scalable architecture that integrates with the Shopify platform and leverages the Ultravox model through Replicate's API for voice processing and tool calling. This document outlines the key components of the system and how they interact.
 
 ## Architecture Diagram
 
@@ -23,42 +23,57 @@ The Voice AI Shopping Assistant is built on a modern, scalable architecture that
 │            │                                     │                     │
 └────────────┼─────────────────────────────────────┼─────────────────────┘
              │                                     │
-             │                                     │
-┌────────────┼─────────────────────────────────────┼─────────────────────┐
-│            │                                     │                     │
-│  ┌─────────▼─────────┐        ┌─────────────────▼───────────────────┐ │
-│  │                   │        │                                      │ │
-│  │  Shopify App      │        │            API Layer                 │ │
-│  │  Backend          │        │                                      │ │
-│  │                   │        │  ┌────────────┐   ┌───────────────┐  │ │
-│  │ ┌───────────────┐ │        │  │ Assistant │   │ Data Access   │  │ │
-│  │ │ Configuration │ │        │  │ API       │   │ Layer         │  │ │
-│  │ │ Storage       │ │        │  └─────┬─────┘   └───────┬───────┘  │ │
-│  │ └───────────────┘ │        │        │                 │          │ │
-│  │                   │        │        └────────┬────────┘          │ │
-│  └───────────────────┘        └────────────────┼─────────────────────┘ │
-│                                                │                       │
-│  Voice AI Assistant Platform                   │                       │
-│                                                │                       │
-└────────────────────────────────────────────────┼───────────────────────┘
-                                                 │
-                                                 │
-┌────────────────────────────────────────────────┼───────────────────────┐
-│                                                │                       │
-│  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │                                             │                    │  │
-│  │  AI Services                                │                    │  │
-│  │                                             ▼                    │  │
-│  │  ┌─────────────────┐  ┌───────────────┐  ┌─────────────────┐    │  │
-│  │  │ Speech-to-Text  │  │ NLU Engine    │  │ Text-to-Speech  │    │  │
-│  │  │ Service         │  │               │  │ Service         │    │  │
-│  │  └─────────────────┘  └───────────────┘  └─────────────────┘    │  │
-│  │                                                                  │  │
-│  └──────────────────────────────────────────────────────────────────┘  │
-│                                                                         │
-│  External AI Platform                                                   │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+             │                   ┌─────────────────┘
+             │                   │  WebSocket Audio Stream
+┌────────────┼───────────────────┼─────────────────────────────────────────┐
+│            │                   │                                          │
+│  ┌─────────▼─────────┐       ┌─▼────────────────┐     ┌───────────────┐  │
+│  │                   │       │                  │     │               │  │
+│  │  Shopify App      │       │  LiveKit Proxy   │     │ TTS Service   │  │
+│  │  Backend          │       │  Server          │     │               │  │
+│  │                   │       │                  │     │               │  │
+│  │ ┌───────────────┐ │       │ ┌────────────┐  │     │ ┌─────────┐   │  │
+│  │ │ Configuration │ │       │ │ Audio      │  │     │ │ Voice   │   │  │
+│  │ │ Storage       │ │       │ │ Processor  │  │     │ │ Synth   │   │  │
+│  │ └───────────────┘ │       │ └─────┬──────┘  │     │ └─────────┘   │  │
+│  │                   │       │       │         │     │               │  │
+│  └────────┬──────────┘       └───────┼─────────┘     └───────────────┘  │
+│           │                          │                        ▲          │
+│           │       ┌──────────────────┘                        │          │
+│           │       │                                           │          │
+│  ┌────────▼───────▼───┐                              ┌────────┴────────┐ │
+│  │                    │                              │                 │ │
+│  │ Tool Execution     │◄─────────────────────────────┤ Response        │ │
+│  │ Engine             │                              │ Processor       │ │
+│  │                    │                              │                 │ │
+│  └────────┬───────────┘                              └────────┬────────┘ │
+│           │                                                   │          │
+│           │                                                   │          │
+│  Voice AI Assistant Platform                                  │          │
+│                                                               │          │
+└───────────┼───────────────────────────────────────────────────┼──────────┘
+            │                                                   │
+            ▼                                                   ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│                                                                           │
+│  ┌────────────────────────────────────────────────────────────────────┐   │
+│  │                                                                     │  │
+│  │  Replicate API                                                      │  │
+│  │                                                                     │  │
+│  │  ┌─────────────────────────┐                                        │  │
+│  │  │ Ultravox Model          │                                        │  │
+│  │  │                         │                                        │  │
+│  │  │ - Speech Understanding  │                                        │  │
+│  │  │ - Tool Calling          │                                        │  │
+│  │  │ - Natural Language      │                                        │  │
+│  │  │   Processing            │                                        │  │
+│  │  └─────────────────────────┘                                        │  │
+│  │                                                                     │  │
+│  └────────────────────────────────────────────────────────────────────┘   │
+│                                                                           │
+│  Replicate Platform                                                       │
+│                                                                           │
+└───────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Component Descriptions
@@ -68,157 +83,105 @@ The Voice AI Shopping Assistant is built on a modern, scalable architecture that
 #### 1.1 Shopify Admin Interface
 - **App Settings & Configuration**: React-based interface built using Shopify App Bridge and Polaris components
 - **Purpose**: Allows merchants to configure the voice assistant, customize appearance, and view analytics
-- **Technologies**: React, Shopify App Bridge, Polaris UI components
+- **Technologies**: React, Remix, Shopify App Bridge, Polaris UI components
 
 #### 1.2 Theme App Extension
 - **Voice UI Components**: Frontend interface that shoppers interact with
-- **Assistant Logic**: Client-side JavaScript that handles voice capture, playback, and interaction flow
+- **Assistant Logic**: Client-side JavaScript that handles voice capture, visualization, and UI interactions
 - **Purpose**: Embeds the voice assistant into the merchant's storefront
-- **Technologies**: JavaScript, Liquid, HTML/CSS
+- **Technologies**: JavaScript, WebSockets, WebAudio API
 
 ### 2. Voice AI Assistant Platform
 
 #### 2.1 Shopify App Backend
-- **Configuration Storage**: Database to store merchant-specific settings and preferences
-- **Authentication**: Handles OAuth with Shopify and secure session management
-- **Purpose**: Manages merchant data and serves as the bridge between Shopify and AI services
+- **Configuration Storage**: Database to store merchant-specific settings
+- **Tool Execution Engine**: Processes tool calls from the Ultravox model to perform actions like product search or UI display
+- **Response Processor**: Handles the text responses and prepares them for TTS
 - **Technologies**: Node.js, Remix.js, Prisma ORM
 
-#### 2.2 API Layer
-- **Assistant API**: REST/GraphQL endpoints for the Theme Extension to communicate with
-- **Data Access Layer**: Handles querying Shopify's Admin and Storefront APIs
-- **Purpose**: Processes requests from the Theme Extension, fetches required data, and coordinates with AI services
-- **Technologies**: GraphQL, REST, WebSockets for real-time communication
+#### 2.2 LiveKit Proxy Server
+- **Audio Processor**: WebSocket server that buffers audio chunks and forwards them to Replicate
+- **Purpose**: Handles real-time audio streaming between the frontend and Replicate
+- **Technologies**: Node.js, WebSockets, Docker container
 
-### 3. External AI Services
+#### 2.3 TTS Service
+- **Voice Synthesis**: Converts text responses from Ultravox into speech
+- **Purpose**: Creates natural voice responses for the assistant
+- **Technologies**: LiveKit integration with TTS service (e.g., Rime)
 
-#### 3.1 Speech-to-Text Service
-- **Purpose**: Converts shopper's voice input into text for processing
-- **Potential Technologies**: Web Speech API (browser-based), Google Cloud Speech-to-Text, Amazon Transcribe
+### 3. Replicate Platform
 
-#### 3.2 Natural Language Understanding (NLU) Engine
-- **Purpose**: Interprets the shopper's intent and extracts relevant entities from text
-- **Potential Technologies**: Custom-trained NLP models, OpenAI GPT, DialogFlow
-
-#### 3.3 Text-to-Speech Service
-- **Purpose**: Converts assistant responses to natural-sounding speech
-- **Potential Technologies**: Web Speech API (browser-based), Google Cloud Text-to-Speech, Amazon Polly
+#### 3.1 Ultravox Model via Replicate API
+- **Speech Understanding**: Processes audio input directly without a separate ASR step
+- **Tool Calling**: Identifies when to call specific tools and provides parameters
+- **Natural Language Processing**: Understands user intent and generates appropriate responses
+- **Technologies**: Ultravox v0.5 model, Replicate API, streaming responses
 
 ## Data Flow
 
 ### Voice Query Flow
 1. Shopper activates the voice assistant in the storefront (Theme App Extension)
-2. Assistant captures audio via browser's microphone API
-3. Audio is sent to Speech-to-Text service
-4. Transcribed text is processed by the NLU Engine to determine intent
-5. Intent and entities are sent to the Assistant API
-6. Assistant API queries relevant data from Shopify (products, collections, etc.)
-7. Response is generated and sent back to the Theme App Extension
-8. Text-to-Speech converts the response to audio (if enabled)
-9. Response is presented to the shopper visually and/or audibly
+2. Frontend captures audio via WebAudio API and streams it through WebSockets
+3. LiveKit Proxy receives audio chunks, buffers them, and forwards to Replicate
+4. Ultravox model on Replicate processes audio and returns text with tool calling information
+5. Backend executes tool calls (product search, UI display, navigation)
+6. Text response is sent to TTS service for voice synthesis
+7. Audio response is streamed back to the frontend
+8. Frontend plays the audio response and updates UI based on tool actions
 
-### Configuration Flow
-1. Merchant configures the assistant via the Shopify Admin Interface
-2. Configuration changes are sent to the Shopify App Backend
-3. Settings are stored in the Configuration Storage
-4. Theme App Extension fetches the latest configuration when loaded
-5. Assistant behavior and appearance reflect the merchant's settings
+### Tool Calling Flow
+1. Ultravox identifies a tool action from the user's query (e.g., "Show me red shirts")
+2. Replicate returns a structured tool call with parameters (e.g., `searchProducts(color: "red", category: "shirts")`)
+3. Tool Execution Engine processes the call and queries Shopify APIs for data
+4. Results are formatted according to the UI requirements (e.g., product carousel)
+5. Frontend receives the display instructions and renders the appropriate UI
 
 ## Technical Considerations
 
 ### Security
 - All API communications use HTTPS/TLS encryption
-- Authentication via Shopify OAuth and session tokens
+- WebSocket connections secured with proper authentication
 - Voice data is processed but not persistently stored
 - GDPR/CCPA compliance built into data handling
 
 ### Performance
-- Client-side caching to reduce API calls
-- Asynchronous processing of voice data
-- Optimized asset delivery for Theme App Extension
-- Lazy loading of non-critical components
+- Binary WebSocket data for reduced latency
+- Audio buffering optimized for speech recognition
+- Progressive processing for faster response times
+- Streaming audio playback for immediate feedback
 
 ### Scalability
-- Stateless API design to support horizontal scaling
-- Rate limiting to prevent abuse
-- Database sharding for configuration storage if needed
-- CDN distribution for static assets
+- Docker containerization for LiveKit proxy
+- Stateless design to support horizontal scaling
+- Efficient resource usage with proper cleanup
+- Rate limiting to prevent API abuse
 
-## Deployment Architecture
+## Implementation Details
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                                                                     │
-│                         Shopify Infrastructure                      │
-│                                                                     │
-│  ┌───────────────────┐       ┌───────────────────┐                  │
-│  │                   │       │                   │                  │
-│  │ Shopify Admin     │       │ Merchant          │                  │
-│  │ Dashboard         │       │ Storefront        │                  │
-│  │                   │       │                   │                  │
-│  └───────────────────┘       └───────────────────┘                  │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
-                 ▲                         ▲
-                 │                         │
-                 │                         │
-┌────────────────┼─────────────────────────┼────────────────────────┐
-│                │                         │                        │
-│  ┌─────────────┼─────────────────────────┼───────────────┐        │
-│  │             │                         │               │        │
-│  │  CDN        └─────┐           ┌───────┘               │        │
-│  │                   │           │                       │        │
-│  └───────────────────┘           └───────────────────────┘        │
-│                                                                   │
-│  ┌───────────────────┐           ┌───────────────────┐            │
-│  │                   │           │                   │            │
-│  │ Admin Interface   │◄──────────┤ API Gateway      │            │
-│  │ Web App           │           │                   │            │
-│  │                   │           │                   │            │
-│  └─────────┬─────────┘           └────────┬──────────┘            │
-│            │                              │                       │
-│            │                              │                       │
-│  ┌─────────▼─────────┐           ┌────────▼──────────┐            │
-│  │                   │           │                   │            │
-│  │ App Backend       │◄──────────┤ AI Services       │            │
-│  │ (Remix.js)        │           │ Integration       │            │
-│  │                   │           │                   │            │
-│  └─────────┬─────────┘           └───────────────────┘            │
-│            │                                                      │
-│            │                                                      │
-│  ┌─────────▼─────────┐                                            │
-│  │                   │                                            │
-│  │ Database          │                                            │
-│  │ (Prisma/MySQL)    │                                            │
-│  │                   │                                            │
-│  └───────────────────┘                                            │
-│                                                                   │
-│  Hosting Infrastructure (e.g., Cloudflare, Vercel, Heroku)        │
-│                                                                   │
-└───────────────────────────────────────────────────────────────────┘
-```
+### LiveKit Proxy Server
+- ES Module-based Node.js implementation
+- WebSocket server for audio streaming
+- Audio buffer management for optimal chunks
+- Error handling and reconnection logic
 
-## Integration Points
+### Replicate Integration
+- Streaming API for real-time responses
+- Tool calling definition and execution
+- Proper error handling and fallbacks
+- Optimal audio parameters for Ultravox model
 
-### Shopify APIs
-- **GraphQL Admin API**: For accessing and modifying store data
-- **Storefront API**: For retrieving product and collection information
-- **App Bridge**: For embedding the admin interface in Shopify dashboard
-- **Theme App Extensions**: For integrating with the merchant's storefront
+### Tool Calling Framework
+- Structured JSON schema for each tool
+- Product search, UI display, and navigation tools
+- Context maintenance across conversation turns
+- Error recovery with graceful degradation
 
-### External Services
-- **Voice Processing API**: For speech-to-text and text-to-speech functionality
-- **Natural Language Processing**: For understanding customer intents and queries
-- **Analytics Services**: For tracking usage metrics and generating insights
-
-## Future Architecture Considerations
-
-- **Multi-region deployment** for lower latency across global markets
-- **Real-time synchronization** between admin changes and storefront experience
-- **Advanced caching strategies** for frequent queries and responses
-- **Offline functionality** for intermittent connectivity scenarios
-- **Enhanced security measures** for voice biometric protection
+## Future Considerations
+- Voice cloning for custom assistant voices
+- Multi-language support using multilingual models
+- Advanced analytics for voice interaction patterns
+- Progressive enhancement for various device capabilities
 
 ---
 
-This architecture document will be updated as implementation progresses and as the system evolves based on merchant and shopper feedback. 
+This architecture document will be updated as implementation progresses and as the system evolves based on merchant and shopper feedback.

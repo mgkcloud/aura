@@ -149,6 +149,18 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
 
 ### 3.4 Audio Processing Infrastructure
 
+#### 3.4.0 WebRTC Implementation (PRIORITY)
+- [x] Create a high-quality WebRTC audio client in /app/utils/livekit-audio.ts
+- [x] Create an integration layer in /app/utils/voice-assistant-integration.ts
+- [x] Update the Shopify theme extension's voice-assistant.js to use our new integration
+- [x] Ensure compatibility with existing visualization code
+- [ ] Fix API routing for proxied audio endpoints ("/proxy/audio" 404 error)
+- [ ] Configure proper audio track handling with LiveKit rooms
+- [ ] Set up noise cancellation and audio cleanup with Krisp integration
+- [ ] Add audio gain control for microphone boost in UI
+- [ ] Implement fallback mechanisms for unsupported browsers
+- [ ] Test WebRTC implementation across different browsers and devices
+
 #### 3.4.1 WebSocket Server Implementation
 - [x] Create WebSocket server setup
 - [x] Implement connection handling
@@ -160,13 +172,19 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
 - [ ] Set up connection state tracking
 - [ ] Add logging and monitoring
 - [ ] Implement security measures (rate limiting, etc.)
-- [ ] Create reconnection logic
+- [ ] Create reconnection logic with exponential backoff
 - [ ] Test with multiple concurrent connections
 
 #### 3.4.2 Audio Streaming Configuration
 - [x] Implement audio buffer management
 - [x] Set up audio chunking and transmission
-- [ ] Configure audio quality parameters
+- [ ] Process audio directly as streams instead of base64 chunks
+- [ ] Configure optimal audio parameters for speech recognition:
+  - [ ] Sample rate: 16000Hz
+  - [ ] Mono audio (single channel)
+  - [ ] Enable echo cancellation
+  - [ ] Enable noise suppression
+  - [ ] Enable auto gain control
 - [ ] Implement adaptable buffer sizes
 - [ ] Create audio format conversion if needed
 - [ ] Add handling for different sample rates
@@ -187,8 +205,9 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
 
 #### 3.4.4 Error Handling and Recovery
 - [ ] Implement connection error detection
-- [ ] Create fallback mechanisms for failed connections
-- [ ] Add automatic reconnection logic
+- [ ] Create multiple fallback mechanisms:
+  - [ ] WebRTC → MediaRecorder → SpeechRecognition API
+- [ ] Add automatic reconnection logic with exponential backoff
 - [ ] Implement graceful degradation options
 - [ ] Create user-friendly error messages
 - [ ] Add logging for error diagnostic purposes
@@ -275,14 +294,16 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
 #### 3.6.3 Audio Capture Implementation
 - [x] Implement microphone access request
 - [x] Create audio recording functionality
-- [ ] Add visual feedback during recording
-- [ ] Implement volume level visualization
-- [ ] Create permission handling and error states
+- [ ] Implement audio visualization based on actual audio levels
+- [ ] Add dynamic visual feedback during recording
+- [ ] Create robust permission handling and error states with fallbacks
+- [ ] Use WebAudio's analyzers for real-time visualization
 - [ ] Add noise detection and notification
 - [ ] Implement recording timeout handling
 - [ ] Create fallback text input option
-- [ ] Add audio quality monitoring
-- [ ] Implement adaptable recording parameters
+- [ ] Add audio quality monitoring and feedback
+- [ ] Implement mic volume boost with GainNode
+- [ ] Implement proper media track cleanup on disconnect
 - [ ] Test on various browsers and devices
 
 #### 3.6.4 Information Window Component

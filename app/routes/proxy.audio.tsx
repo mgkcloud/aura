@@ -4,18 +4,31 @@ import WebSocket from 'ws';
 
 /**
  * App Proxy endpoint for processing voice assistant audio
- * This is accessed through the Shopify App Proxy at: /apps/voice
+ * This route handles audio data specifically, as a subpath of the main proxy.
+ * This is accessed through the Shopify App Proxy at: /apps/voice/audio
  * 
- * The app_proxy configuration in shopify.app.toml is:
+ * The app_proxy configuration in shopify.app.toml defines the base path:
  * [app_proxy]
  * url = "https://your-app-url.com/proxy"
  * prefix = "apps"
  * subpath = "voice"
+ * 
+ * This route handles: /apps/voice/audio which maps to /proxy/audio
+ * 
+ * Note: In Remix with flat routes, proxy.audio.tsx maps to /proxy/audio route
  */
 
 // GET handler for options/health checks
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { liquid } = await authenticate.public.appProxy(request);
+  const { liquid, session } = await authenticate.public.appProxy(request);
+  
+  // Enhanced request logging for debug
+  console.log('===== AUDIO PROXY GET REQUEST =====');
+  console.log('Request URL:', request.url);
+  console.log('Request path:', new URL(request.url).pathname);
+  console.log('Session shop:', session?.shop);
+  console.log('Headers:', Object.fromEntries([...request.headers.entries()].map(([k, v]) => [k, v])));
+  console.log('==============================');
   
   // If this is a preflight OPTIONS request, handle it with proper CORS headers
   if (request.method === "OPTIONS") {
@@ -29,9 +42,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       }
     });
   }
-  
-  // Return a simple liquid response for health check
-  return liquid("Voice Assistant API is running", { layout: false });
+
+  // Return helpful response for health checks and debugging
+  return liquid(`
+    <div style="font-family: system-ui, sans-serif; padding: 2rem;">
+      <h1>Voice Assistant Audio API is running</h1>
+      <p>This endpoint is configured to handle audio data for the voice assistant.</p>
+      <p>Shop: ${session?.shop || 'Not available'}</p>
+      <p>Time: ${new Date().toISOString()}</p>
+      <p>Path: ${new URL(request.url).pathname}</p>
+    </div>
+  `, { layout: false });
 };
 
 // POST handler for processing audio
@@ -40,7 +61,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.public.appProxy(request);
 
   // Enhanced request logging for debugging
-  console.log('===== MAIN PROXY REQUEST =====');
+  console.log('===== AUDIO PROXY REQUEST =====');
   console.log('Request URL:', request.url);
   console.log('Request path:', new URL(request.url).pathname);
   console.log('Session shop:', session?.shop);
@@ -62,16 +83,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     // Parse the JSON body to get audio data
     const body = await request.json();
-    const { audio, shopDomain, command } = body;
+    const { audio, shopDomain, requestId } = body;
     
-    console.log('Request received with data:');
+    console.log('Audio request received with data:');
     console.log('- Shop domain:', shopDomain);
-    console.log('- Command provided:', !!command);
+    console.log('- Request ID:', requestId);
     console.log('- Audio data provided:', !!audio);
     
-    // Support both audio data and text commands
-    if (!audio && !command) {
-      return json({ error: "Missing audio data or command" }, { 
+    // Audio data is required for this endpoint
+    if (!audio) {
+      return json({ error: "Missing audio data" }, { 
         status: 400,
         headers: responseHeaders 
       });
@@ -83,59 +104,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       console.error('No shop domain provided and no session shop found');
       return json({ error: "Missing shop domain" }, { 
         status: 400,
-        headers: responseHeaders 
+        headers: responseHeaders
       });
     }
 
-    // Process the command or audio data using LiveKit proxy
+    // Process the audio data using LiveKit proxy
     return await new Promise((resolve, reject) => {
-      // If we have a text command without audio, we can call Replicate directly
-      if (command && !audio) {
-        console.log('Processing text command directly:', command);
-        
-        // Call Replicate API directly for text commands
-        fetch("https://api.replicate.com/v1/predictions", {
-          method: "POST",
-          headers: {
-            Authorization: `Token ${process.env.REPLICATE_API_TOKEN}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            version: process.env.ULTRAVOX_MODEL_VERSION,
-            input: {
-              command,
-              audio: '',
-              shop_domain: shop,
-              cart_context: ''
-            }
-          }),
-        }).then(async (response) => {
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(`Replicate API error: ${response.status} - ${JSON.stringify(errorData)}`);
-          }
-          
-          return response.json();
-        }).then((prediction) => {
-          if (prediction.status === "succeeded") {
-            resolve(json(JSON.parse(prediction.output)));
-          } else if (prediction.status === "failed") {
-            throw new Error(`Replicate prediction failed: ${prediction.error}`);
-          } else {
-            resolve(json({ status: "pending", id: prediction.id }, { status: 202 }));
-          }
-        }).catch((error) => {
-          console.error('Error calling Replicate:', error);
-          resolve(json({ 
-            error: 'Error processing text command',
-            message: 'Sorry, there was a problem processing your request.'
-          }, { status: 500 }));
-        });
-        
-        return;
-      }
-      
-      // Otherwise, process audio via LiveKit
       console.log('Processing audio via LiveKit');
       // Important: Always use ws:// protocol for WebSockets in development/Docker
       // In production, this should be configured properly with wss:// if behind SSL
@@ -151,7 +125,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       
       console.log(`Connecting to LiveKit at: ${livekitUrl}`);
       const ws = new WebSocket(livekitUrl);
-      const requestId = Date.now().toString();
+      const currentRequestId = requestId || Date.now().toString();
       
       const timeout = setTimeout(() => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -160,7 +134,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         resolve(json({ 
           error: 'LiveKit connection timeout',
           message: 'Sorry, processing took too long. Please try again.'
-        }, { status: 504 }));
+        }, { 
+          status: 504,
+          headers: responseHeaders 
+        }));
       }, 15000);
       
       ws.on('open', () => {
@@ -176,7 +153,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ws.send(JSON.stringify({
           type: 'audio',
           data: audio,
-          requestId
+          requestId: currentRequestId
         }));
       });
       
@@ -186,17 +163,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           
           if (data.type === 'init_ack') {
             // Connection initialized, waiting for results
-          } else if (data.type === 'result' && data.requestId === requestId) {
+          } else if (data.type === 'result' && data.requestId === currentRequestId) {
             clearTimeout(timeout);
             ws.close();
-            resolve(json(data.result));
-          } else if (data.type === 'error' && data.requestId === requestId) {
+            resolve(json(data.result, { 
+              headers: responseHeaders
+            }));
+          } else if (data.type === 'error' && data.requestId === currentRequestId) {
             clearTimeout(timeout);
             ws.close();
             resolve(json({ 
               error: data.error,
               message: 'Sorry, there was an error processing your request.'
-            }, { status: 500 }));
+            }, { 
+              status: 500,
+              headers: responseHeaders 
+            }));
           }
         } catch (error) {
           console.error('Error parsing LiveKit message:', error);
@@ -209,7 +191,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         resolve(json({ 
           error: 'LiveKit connection error',
           message: 'Sorry, there was a problem connecting to the voice service.'
-        }, { status: 500 }));
+        }, { 
+          status: 500,
+          headers: responseHeaders 
+        }));
       });
       
       ws.on('close', () => {
@@ -221,6 +206,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ 
       error: 'Error processing audio data',
       message: 'Sorry, there was a problem processing your request.'
-    }, { status: 500 });
+    }, { 
+      status: 500,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Accept",
+      }
+    });
   }
 };

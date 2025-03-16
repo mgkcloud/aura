@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Prisma } from '@prisma/client';
 import { authenticate } from './shopify.server';
+import http from 'http';
 
 interface AudioStreamMessage {
   type: 'audio';
@@ -48,100 +49,116 @@ let serverInstance: WebSocketServer | null = null;
 export async function initLiveKitProxy() {
   // Return existing server if already initialized
   if (serverInstance) {
-    console.log('LiveKit proxy already running, reusing existing instance');
+    console.log('LiveKit proxy server already running');
     return serverInstance;
   }
-
-  try {
-    const server = new WebSocketServer({ port: 7880 });
-    serverInstance = server;
-
-    console.log('LiveKit proxy server listening on port 7880');
-
-    server.on('connection', (ws) => {
-      let participantId: string | null = null;
-
-      ws.on('message', async (message) => {
-        try {
-          const data = JSON.parse(message.toString());
-
-          if (data.type === 'init') {
-            participantId = data.participantId;
-            const shopId = data.shopId;
-
-            // Store the connection
-            activeParticipants.set(participantId, {
-              ws,
-              shopId,
-              callbacks: new Map()
-            });
-
-            // Initialize audio buffer
-            audioBuffers.set(participantId, []);
-
-            console.log(`New participant connected: ${participantId} from shop: ${shopId}`);
-
-            // Send acknowledgement
-            ws.send(JSON.stringify({
-              type: 'init_ack',
-              participantId
-            }));
-          } 
-          else if (data.type === 'audio' && participantId) {
-            const audioData = data.data; // base64 encoded audio
-            const buffer = audioBuffers.get(participantId) || [];
-            
-            // Add to buffer
-            buffer.push(audioData);
-            audioBuffers.set(participantId, buffer);
-            
-            // If buffer is full, process the audio
-            if (buffer.length >= BUFFER_SIZE) {
-              processAudioBuffer(participantId, data.requestId);
-            }
+  
+  // Create HTTP server for both WebSocket and health checks
+  const server = http.createServer((req, res) => {
+    // Add a health check endpoint
+    if (req.url === '/health') {
+      console.log('Health check received');
+      res.writeHead(200);
+      res.end('OK');
+      return;
+    }
+    
+    // Handle other routes
+    res.writeHead(404);
+    res.end('Not found');
+  });
+  
+  // Create WebSocket server
+  const wss = new WebSocketServer({ server });
+  
+  // Handle WebSocket connections
+  wss.on('connection', (ws) => {
+    let participantId: string | null = null;
+    
+    ws.on('message', async (message) => {
+      try {
+        const data = JSON.parse(message.toString());
+        
+        if (data.type === 'init') {
+          participantId = data.participantId;
+          const shopId = data.shopId;
+          
+          if (!participantId) {
+            console.error('Missing participantId in init message');
+            return;
           }
-          else if (data.type === 'cart' && participantId) {
-            // Store cart context
-            const participant = activeParticipants.get(participantId);
-            if (participant) {
-              participant.cartContext = data as CartContextMessage;
-              activeParticipants.set(participantId, participant);
-            }
+          
+          // Store the connection
+          activeParticipants.set(participantId, {
+            ws,
+            shopId,
+            callbacks: new Map()
+          });
+          
+          // Initialize audio buffer
+          audioBuffers.set(participantId, []);
+          
+          console.log(`New participant connected: ${participantId} from shop: ${shopId}`);
+          
+          // Send acknowledgement
+          ws.send(JSON.stringify({
+            type: 'init_ack',
+            participantId
+          }));
+        } 
+        else if (data.type === 'audio' && participantId) {
+          const audioData = data.data; // base64 encoded audio
+          const buffer = audioBuffers.get(participantId) || [];
+          
+          // Add to buffer
+          buffer.push(audioData);
+          audioBuffers.set(participantId, buffer);
+          
+          // If buffer is full, process the audio
+          if (buffer.length >= BUFFER_SIZE) {
+            processAudioBuffer(participantId, data.requestId);
           }
-
-        } catch (error) {
-          console.error('Error processing WebSocket message:', error);
         }
-      });
-
-      ws.on('close', () => {
-        if (participantId) {
-          console.log(`Participant disconnected: ${participantId}`);
-          audioBuffers.delete(participantId);
-          activeParticipants.delete(participantId);
+        else if (data.type === 'cart' && participantId) {
+          // Store cart context
+          const participant = activeParticipants.get(participantId);
+          if (participant) {
+            participant.cartContext = data as CartContextMessage;
+            activeParticipants.set(participantId, participant);
+          }
         }
-      });
-
-      ws.on('error', (error) => {
-        console.error('WebSocket error:', error);
-      });
-    });
-
-    server.on('error', (error) => {
-      console.error('WebSocket server error:', error);
-      if ((error as any).code === 'EADDRINUSE') {
-        console.error('Port 7880 is already in use. Ensure no other instances are running.');
-        serverInstance = null;
+      } catch (error) {
+        console.error('Error processing WebSocket message:', error);
       }
     });
-
-    console.log('LiveKit proxy initialized successfully');
-    return server;
-  } catch (error) {
-    console.error('Failed to initialize LiveKit proxy:', error);
-    serverInstance = null;
-    throw error;
-  }
+    
+    ws.on('close', () => {
+      if (participantId) {
+        console.log(`Participant disconnected: ${participantId}`);
+        audioBuffers.delete(participantId);
+        activeParticipants.delete(participantId);
+      }
+    });
+    
+    ws.on('error', (error) => {
+      console.error('WebSocket error:', error);
+    });
+  });
+  
+  // Start the server
+  const PORT = process.env.PORT || 7880;
+  server.listen(PORT, () => {
+    console.log(`LiveKit proxy server listening on port ${PORT}`);
+    console.log(`Health check available at http://localhost:${PORT}/health`);
+    
+    // Log environment
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`Replicate API Token: ${process.env.REPLICATE_API_TOKEN ? '✓ Set' : '✗ Not set'}`);
+    console.log(`Ultravox Model Version: ${process.env.ULTRAVOX_MODEL_VERSION ? '✓ Set' : '✗ Not set'}`);
+  });
+  
+  serverInstance = wss;
+  return wss;
 }
 
 async function processAudioBuffer(participantId: string, requestId: string) {

@@ -2,19 +2,26 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy necessary files
-COPY package.json package-lock.json ./
-COPY app/livekit-proxy.server.ts ./
+# Copy only necessary files
+COPY app/livekit-proxy.server.js app/server.js ./
 
-# Install dependencies
-RUN npm install ws
+# Create a proper package.json with type:module
+RUN echo '{"name":"livekit-proxy","private":true,"type":"module","dependencies":{"ws":"^8.18.1","node-fetch":"^3.3.2"},"engines":{"node":">=18.0.0"}}' > package.json
 
-# Create a simple server file
-RUN echo 'const proxy = require("./livekit-proxy.server"); \n\
-proxy.initLiveKitProxy().then(() => { \n\
-  console.log("LiveKit proxy server started"); \n\
-});' > server.js
+# Install dependencies (with production flag to minimize image size)
+RUN npm install --production=true
 
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD wget -q --spider http://localhost:7880/health || exit 1
+
+# Expose port
 EXPOSE 7880
 
-CMD ["node", "server.js"]
+# Set environment variables
+ENV NODE_ENV="production"
+ENV REPLICATE_API_TOKEN=""
+ENV ULTRAVOX_MODEL_VERSION=""
+
+# Run with increased memory limits if needed
+CMD ["node", "--experimental-specifier-resolution=node", "--max-old-space-size=512", "server.js"]
