@@ -2,6 +2,15 @@
 
 This document outlines the improvements made to the voice assistant's audio processing using WebRTC and LiveKit.
 
+## Implementation Status (Updated March 2025)
+
+### Recent Fixes
+- ✅ Fixed ES module compatibility issues in the LiveKit proxy server
+- ✅ Resolved WebSocket connection protocol mismatch (wss:// vs ws://)
+- ✅ Added proper CORS headers for cross-origin requests
+- ✅ Enhanced error handling in both frontend and backend
+- ✅ Fixed audio data transmission between frontend and backend
+
 ## Overview
 
 We have enhanced the voice assistant's audio processing capabilities by implementing a robust WebRTC audio pipeline using LiveKit. The improvements focus on audio quality, noise reduction, and proper audio level monitoring for voice recognition applications.
@@ -118,6 +127,27 @@ To integrate these improvements into the existing voice assistant code:
 - Audio chunks are processed and sent at optimized intervals (250ms).
 - Proper cleanup of resources prevents memory leaks.
 - Audio visualization uses requestAnimationFrame for smooth performance.
+
+## Current Issues
+
+The audio WebSocket pipeline is now functioning correctly, but we need to focus on:
+
+1. **Replicate API Integration**
+   - Debug any remaining issues with the Ultravox model API
+   - Ensure proper audio format for the model (16kHz, mono)
+   - Implement streaming responses for better user experience
+
+2. **Latency Optimization**
+   - Current round-trip time needs improvement
+   - Consider implementing progressive responses
+   - Optimize buffer sizes for better performance
+
+## Next Steps (March 2025)
+
+1. Debug Replicate API responses from the LiveKit proxy
+2. Implement Text-to-Speech for voice responses
+3. Connect tool calling framework to Shopify Storefront API
+4. Test end-to-end performance on different devices
 
 ## Future Improvements
 

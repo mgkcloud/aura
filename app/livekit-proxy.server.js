@@ -136,6 +136,11 @@ export async function initLiveKitProxy() {
   // Start HTTP server
   const PORT = process.env.PORT || 7880;
   
+  // Log environment details
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Replicate API Token: ${process.env.REPLICATE_API_TOKEN ? '✓ Set' : '✗ Not set'}`);
+  console.log(`Ultravox Model Version: ${process.env.ULTRAVOX_MODEL_VERSION || '[NOT SET - THIS WILL CAUSE ERRORS]'}`);
+  
   // Wrap server.listen in a Promise for async/await compatibility
   await new Promise((resolve) => {
     server.listen(PORT, () => {
@@ -180,14 +185,30 @@ async function processAudioBuffer(participantId, requestId) {
     
     // Only attempt Replicate API call if credentials are available
     if (process.env.REPLICATE_API_TOKEN && process.env.ULTRAVOX_MODEL_VERSION) {
+      console.log(`Starting Replicate API request with shop: ${connection.shopId}`);
       // Combine audio chunks
       const combinedAudio = buffer.join('');
+      
+      // Validate the audio data
+      if (!combinedAudio || combinedAudio.length < 100) {
+        console.warn(`Audio data appears to be too small (${combinedAudio.length} chars), may be invalid`);
+      }
+      
+      // Verify it looks like base64 data
+      if (!combinedAudio.match(/^[A-Za-z0-9+/=]+$/)) {
+        console.warn('Audio data does not appear to be valid base64');
+      } else {
+        console.log('Audio data appears to be valid base64 format');
+      }
+      
+      // Use a test command for easier debugging
+      const testCommand = "What products do you have?";
       
       // Prepare request payload with shop context
       const payload = {
         version: process.env.ULTRAVOX_MODEL_VERSION,
         input: {
-          command: '', // Empty command since we're using audio
+          command: testCommand, // Add a test command to help with debugging
           audio: combinedAudio,
           shop_domain: connection.shopId,
           cart_context: connection.cartContext ? JSON.stringify(connection.cartContext.items) : ''
@@ -195,6 +216,9 @@ async function processAudioBuffer(participantId, requestId) {
       };
       
       console.log(`Sending prediction to Replicate for shop ${connection.shopId}`);
+      console.log(`Using model version: ${process.env.ULTRAVOX_MODEL_VERSION}`);
+      console.log(`Audio data length: ${combinedAudio.length} characters`);
+      console.log(`Test command: ${testCommand}`);
       
       try {
         // Call Replicate API
@@ -209,18 +233,24 @@ async function processAudioBuffer(participantId, requestId) {
         
         if (!response.ok) {
           const errorText = await response.text();
+          console.error(`Replicate API error (${response.status}): ${errorText}`);
+          console.error(`Request payload: ${JSON.stringify(payload, null, 2)}`);
           throw new Error(`Replicate API error (${response.status}): ${errorText}`);
         }
         
         const prediction = await response.json();
+        console.log(`Replicate API response: ${JSON.stringify(prediction, null, 2)}`);
         
         if (prediction.status === 'succeeded') {
           // Handle immediate success (rare with audio processing)
           console.log(`Prediction succeeded immediately: ${prediction.id}`);
+          console.log(`Output: ${prediction.output}`);
           result = JSON.parse(prediction.output);
+          console.log(`Parsed result: ${JSON.stringify(result, null, 2)}`);
         } else if (prediction.status === 'processing' || prediction.status === 'starting') {
           // For async processing (normal case), poll for result
           console.log(`Prediction processing, ID: ${prediction.id}`);
+          console.log(`URL to check: https://api.replicate.com/v1/predictions/${prediction.id}`);
           
           // Send initial "processing" message to client
           sendResultToParticipant(participantId, {
@@ -245,6 +275,26 @@ async function processAudioBuffer(participantId, requestId) {
         }
       } catch (apiError) {
         console.error('Replicate API error:', apiError);
+        console.error(`Request payload that caused error: ${JSON.stringify(payload, null, 2)}`);
+        
+        // Try a simpler test call to check if the API is working at all
+        try {
+          console.log('Attempting simple test API call to Replicate...');
+          const testResponse = await fetch('https://api.replicate.com/v1/models', {
+            headers: {
+              Authorization: `Token ${process.env.REPLICATE_API_TOKEN}`
+            }
+          });
+          
+          if (testResponse.ok) {
+            console.log('Simple test API call succeeded - API token is valid');
+          } else {
+            console.error(`Simple test API call failed: ${testResponse.status}`);
+          }
+        } catch (testError) {
+          console.error('Test API call failed completely:', testError);
+        }
+        
         result = {
           message: "Sorry, I encountered a problem understanding your request. Could you try again?",
           action: "none"
@@ -253,6 +303,12 @@ async function processAudioBuffer(participantId, requestId) {
     } else {
       // Use fallback response if no API token (development mode)
       console.log('Using fallback response (no Replicate credentials)');
+      if (!process.env.REPLICATE_API_TOKEN) {
+        console.warn('REPLICATE_API_TOKEN is not set in environment');
+      }
+      if (!process.env.ULTRAVOX_MODEL_VERSION) {
+        console.warn('ULTRAVOX_MODEL_VERSION is not set in environment');
+      }
       result = fallbackResponse;
     }
     
@@ -298,12 +354,30 @@ async function pollPredictionResult(predictionId, participantId, requestId) {
       }
       
       const predictionStatus = await response.json();
+      console.log(`Poll attempt ${attempt + 1} for prediction ${predictionId}: Status = ${predictionStatus.status}`);
       
       if (predictionStatus.status === 'succeeded') {
         console.log(`Prediction ${predictionId} succeeded after ${attempt + 1} attempts`);
-        return JSON.parse(predictionStatus.output);
+        console.log(`Output: ${JSON.stringify(predictionStatus.output, null, 2)}`);
+        
+        try {
+          if (typeof predictionStatus.output === 'string') {
+            return JSON.parse(predictionStatus.output);
+          } else {
+            return predictionStatus.output;
+          }
+        } catch (parseError) {
+          console.error(`Error parsing prediction output: ${parseError}`);
+          console.error(`Raw output: ${predictionStatus.output}`);
+          // Return a formatted response even if parsing fails
+          return {
+            message: String(predictionStatus.output || "Sorry, I couldn't understand the audio clearly."),
+            action: "none"
+          };
+        }
       } else if (predictionStatus.status === 'failed') {
         console.error(`Prediction ${predictionId} failed: ${predictionStatus.error}`);
+        console.error(`Full prediction status: ${JSON.stringify(predictionStatus, null, 2)}`);
         return null;
       }
       

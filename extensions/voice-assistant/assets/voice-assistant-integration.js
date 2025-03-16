@@ -405,8 +405,54 @@ window.VoiceAssistantIntegration = class VoiceAssistantIntegration {
             
             if (!response.ok) {
               console.error('Audio request failed:', response.status, response.statusText);
-              const errorText = await response.text();
-              console.error('Error details:', errorText);
+              
+              // Clone the response before reading the body to avoid "body stream already read" error
+              const clonedResponse = response.clone();
+              
+              // Try to parse as JSON first
+              try {
+                const errorData = await response.json();
+                console.error('Error details (JSON):', errorData);
+                
+                // If we got a structured error response, we could display it to the user
+                if (errorData && errorData.message) {
+                  // Dispatch an event that the main voice assistant can listen for
+                  const errorEvent = new CustomEvent('voice-assistant-error', {
+                    detail: {
+                      message: errorData.message,
+                      status: response.status
+                    }
+                  });
+                  document.dispatchEvent(errorEvent);
+                }
+              } catch (jsonError) {
+                console.error('Error parsing JSON response:', jsonError);
+                
+                try {
+                  // If JSON parsing failed, try to get text from cloned response
+                  const errorText = await clonedResponse.text();
+                  console.error('Error details (Text):', errorText);
+                  
+                  // Create a simple error event with generic message
+                  const errorEvent = new CustomEvent('voice-assistant-error', {
+                    detail: {
+                      message: 'Sorry, there was a problem with the voice service.',
+                      status: response.status
+                    }
+                  });
+                  document.dispatchEvent(errorEvent);
+                } catch (textError) {
+                  console.error('Error reading text response:', textError);
+                }
+              }
+            } else {
+              // Success case - clone before reading
+              try {
+                const responseData = await response.json();
+                console.log('Audio API response:', responseData);
+              } catch (parseError) {
+                console.error('Error parsing response as JSON:', parseError);
+              }
             }
           } catch (fetchError) {
             console.error('Fetch error:', fetchError);

@@ -419,6 +419,18 @@ document.addEventListener('DOMContentLoaded', () => {
           this.closeModal();
         }
       });
+      
+      // Listen for voice assistant errors
+      document.addEventListener('voice-assistant-error', (event) => {
+        console.log('Voice assistant error event received:', event.detail);
+        this.handleError(event.detail.message || 'Sorry, there was a problem with the voice service.');
+      });
+      
+      // Listen for voice assistant responses
+      document.addEventListener('voice-assistant-response', (event) => {
+        console.log('Voice assistant response event received:', event.detail);
+        this.handleFinalResponse(event.detail);
+      });
     },
     
     toggleModal() {
@@ -523,6 +535,21 @@ document.addEventListener('DOMContentLoaded', () => {
       if (sender === 'assistant') {
         this.updateChatBubbleMessage(text);
       }
+    },
+    
+    handleError(errorMessage) {
+      // Stop listening if active
+      if (this.isListening) {
+        this.isListening = false;
+        this.recordButton.classList.remove('recording');
+        this.recordButton.querySelector('span').textContent = 'Tap to speak';
+      }
+      
+      // Remove loading state if active
+      this.setLoading(false);
+      
+      // Show error message
+      this.addMessage(errorMessage, 'assistant');
     },
     
     // Initialize API endpoints through Shopify App Proxy

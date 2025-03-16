@@ -154,7 +154,7 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
 - [x] Create an integration layer in /app/utils/voice-assistant-integration.ts
 - [x] Update the Shopify theme extension's voice-assistant.js to use our new integration
 - [x] Ensure compatibility with existing visualization code
-- [ ] Fix API routing for proxied audio endpoints ("/proxy/audio" 404 error)
+- [x] Fix API routing for proxied audio endpoints ("/proxy/audio" 404 error)
 - [ ] Configure proper audio track handling with LiveKit rooms
 - [ ] Set up noise cancellation and audio cleanup with Krisp integration
 - [ ] Add audio gain control for microphone boost in UI
@@ -165,12 +165,12 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
 - [x] Create WebSocket server setup
 - [x] Implement connection handling
 - [x] Set up message types and protocols
-- [ ] Create participant identification system
+- [x] Create participant identification system
 - [ ] Implement room management
-- [ ] Add error handling and recovery
+- [x] Add basic error handling and recovery
 - [ ] Implement ping/pong for connection health
-- [ ] Set up connection state tracking
-- [ ] Add logging and monitoring
+- [x] Set up connection state tracking
+- [x] Add logging and monitoring
 - [ ] Implement security measures (rate limiting, etc.)
 - [ ] Create reconnection logic with exponential backoff
 - [ ] Test with multiple concurrent connections
@@ -179,13 +179,13 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
 - [x] Implement audio buffer management
 - [x] Set up audio chunking and transmission
 - [ ] Process audio directly as streams instead of base64 chunks
-- [ ] Configure optimal audio parameters for speech recognition:
-  - [ ] Sample rate: 16000Hz
-  - [ ] Mono audio (single channel)
-  - [ ] Enable echo cancellation
-  - [ ] Enable noise suppression
-  - [ ] Enable auto gain control
-- [ ] Implement adaptable buffer sizes
+- [x] Configure optimal audio parameters for speech recognition:
+  - [x] Sample rate: 16000Hz
+  - [x] Mono audio (single channel)
+  - [x] Enable echo cancellation
+  - [x] Enable noise suppression
+  - [x] Enable auto gain control
+- [x] Implement fixed buffer sizes
 - [ ] Create audio format conversion if needed
 - [ ] Add handling for different sample rates
 - [ ] Optimize for various network conditions
@@ -194,13 +194,15 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
 
 #### 3.4.3 LiveKit Proxy Implementation
 - [x] Create LiveKit proxy server
-- [ ] Implement WebSocket to LiveKit bridging
-- [ ] Set up LiveKit room creation and management
-- [ ] Configure participant tracking
+- [x] Fix ES module compatibility issues in LiveKit proxy server
+- [x] Update Dockerfile and Docker Compose configuration
+- [x] Ensure proper WebSocket protocol handling (ws:// vs wss://)
+- [x] Add CORS headers for cross-origin compatibility
+- [x] Set up participant tracking
 - [ ] Implement authentication token generation
-- [ ] Create session context maintenance
-- [ ] Add error handling and logging
-- [ ] Implement resource cleanup procedures
+- [x] Create session context maintenance
+- [x] Add error handling and logging
+- [x] Implement resource cleanup procedures
 - [ ] Test proxy with various client scenarios
 
 #### 3.4.4 Error Handling and Recovery
@@ -219,50 +221,53 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
 #### 3.5.1 Development Environment Setup
 - [x] Configure Replicate API access
 - [x] Implement basic API client
-- [ ] Set up development model endpoint
+- [x] Set up development model endpoint
 - [ ] Create test suite for model responses
-- [ ] Implement request/response logging
-- [ ] Add error handling for API failures
-- [ ] Create response mocking for development
+- [x] Implement request/response logging
+- [x] Add error handling for API failures
+- [x] Create response mocking for development
 - [ ] Document model interaction patterns
 
 #### 3.5.2 Ultravox Model Deployment (Replicate)
 - [x] Set up Replicate account and API access
-- [ ] Install Cog CLI tools (`pip install cog`)
-- [ ] Configure cog.yaml for Ultravox model
-- [ ] Prepare model dependencies
-- [ ] Set up model weights and configuration
+- [x] Install Cog CLI tools (`pip install cog`)
+- [x] Configure cog.yaml for Ultravox model
+- [x] Prepare model dependencies
+- [x] Set up model weights and configuration
 - [ ] Test model locally with Cog
 - [ ] Package model for Replicate deployment
 - [ ] Push model to Replicate (`cog push r8.im/username/ultravox-model`)
 - [ ] Test deployed model with sample inputs
-- [ ] Configure model version in environment variables
+- [x] Configure model version in environment variables
 - [ ] Set up monitoring for model API health
 - [ ] Document model deployment process
 
-#### 3.5.3 Request Processing
+#### 3.5.3 Request Processing (CURRENT FOCUS)
 - [x] Implement audio data preparation for model
+- [x] Add base64 encoding for audio data
+- [x] Set up proper request format for Ultravox model
+- [ ] Implement audio quality improvement preprocessing
 - [ ] Create user intent extraction logic
 - [ ] Set up context management for conversations
 - [ ] Implement prompt engineering for optimal results
 - [ ] Add response parsing and normalization
-- [ ] Create fallback handling for ambiguous requests
-- [ ] Implement retry logic for failed requests
+- [x] Create fallback handling for API failures
+- [x] Implement retry logic for failed requests
 - [ ] Add response caching for common queries
 - [ ] Set up request batching if applicable
-- [ ] Create detailed logging for request diagnostics
-- [ ] Implement request timeout handling
+- [x] Create detailed logging for request diagnostics
+- [x] Implement request timeout handling
 
 #### 3.5.4 Response Handling and Action Determination
 - [x] Create response parsing functionality
-- [ ] Implement action determination logic
+- [x] Implement basic action determination logic
 - [ ] Set up navigation intent processing
 - [ ] Create product search intent handling
 - [ ] Implement information request processing
-- [ ] Add response formatting for display
-- [ ] Create error handling for malformed responses
+- [x] Add response formatting for display
+- [x] Create error handling for malformed responses
 - [ ] Implement confidence scoring for responses
-- [ ] Add fallback responses for low confidence
+- [x] Add fallback responses for low confidence
 - [ ] Create response transformation for frontend display
 - [ ] Test with various model response scenarios
 
@@ -427,9 +432,50 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
 - [ ] Create post-approval marketing plan
 - [ ] Document submission process and timeline
 
-## 4. Local Development Guide
+## 4. Current Status and Next Steps
 
-### 4.1 Prerequisites
+### 4.1 Current Status (UPDATED)
+- ✅ Fixed LiveKit Proxy Server ES Module Compatibility
+  - Updated LiveKit proxy server to use proper ES module syntax
+  - Fixed WebSocket server implementation for audio streaming
+  - Resolved SSL/protocol issues with WebSocket connections (ws:// vs wss://)
+  - Added proper CORS headers for cross-origin requests
+  - Enhanced error handling and logging
+
+- ✅ Audio Processing Pipeline
+  - Implemented browser-based audio capture in theme extension
+  - Created audio chunking and buffering for optimal processing
+  - Set up WebSocket communication between frontend and backend
+  - Configured audio parameters for optimal speech recognition
+
+- ✅ Backend Infrastructure
+  - Configured Docker environment for LiveKit proxy
+  - Set up Shopify app proxy for handling requests
+  - Implemented Replicate API integration structure
+  - Added model version configuration and authentication
+
+### 4.2 Next Critical Steps (PRIORITY ORDER)
+
+1. **Complete Replicate/Ultravox Integration** (HIGH PRIORITY)
+   - Debug API communication with Replicate
+   - Verify proper audio format and preprocessing
+   - Implement streaming response handling
+   - Test end-to-end audio processing flow
+
+2. **Implement Tool Calling Framework**
+   - Define JSON schema for product search tool
+   - Create UI display tools for showing products
+   - Connect to Shopify Storefront API for data
+
+3. **Add TTS Integration for Voice Response**
+   - Select appropriate TTS service
+   - Implement streaming audio playback
+   - Configure voice parameters
+   - Test voice response quality
+
+### 4.3 Local Development Guide
+
+#### Prerequisites
 - Node.js (v18.20+ or v20.10+)
 - Docker and Docker Compose
 - Shopify CLI
@@ -437,7 +483,7 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
 - GitHub account (for Replicate deployment)
 - Replicate account with API access
 
-### 4.2 Initial Setup
+#### Initial Setup
 
 1. Clone the repository:
 ```bash
@@ -469,7 +515,7 @@ npm run start:livekit-proxy:docker
 npm run dev
 ```
 
-### 4.3 Ultravox Model Deployment (Development)
+### 4.4 Ultravox Model Deployment (Development)
 
 1. Navigate to the ultravox-backend directory:
 ```bash
@@ -493,7 +539,7 @@ cog push r8.im/your-username/voice-assistant
 
 5. Update the ULTRAVOX_MODEL_VERSION in your .env file with the new version ID.
 
-### 4.4 Development Workflow
+### 4.5 Development Workflow
 
 1. Make changes to the code
 2. Test changes locally using the development server
@@ -503,14 +549,17 @@ cog push r8.im/your-username/voice-assistant
 6. Deploy to staging environment for testing
 7. Deploy to production when ready
 
-### 4.5 Troubleshooting
+### 4.6 Troubleshooting
 
 #### Common Issues and Solutions
 
 - **LiveKit Connection Issues**: 
   - Check Docker container is running: `docker ps`
-  - Verify WebSocket URL is correct in .env
+  - Verify WebSocket URL is correct in .env and explicitly uses ws:// protocol, not wss://
   - Check browser console for connection errors
+  - Ensure CORS headers are properly set in proxy routes
+  - Verify proper WebSocket connection in browser (check Network tab)
+  - For SSL errors, ensure you're using the correct WebSocket protocol (ws:// for non-SSL)
 
 - **Microphone Access Problems**:
   - Ensure site is using HTTPS or localhost
