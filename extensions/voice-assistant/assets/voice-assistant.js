@@ -7,6 +7,17 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Add a global error handler to identify where "language-not-supported" errors are coming from
+  window.addEventListener('error', (event) => {
+    console.error('Global error caught:', event);
+    if (event.message && event.message.includes('language-not-supported')) {
+      console.error('Speech recognition error source:', event.filename, 'Line:', event.lineno);
+      // Prevent the error from propagating
+      event.preventDefault();
+      return true;
+    }
+  });
+  
   // Get VoiceAssistantIntegration from window (added by the script tag)
   const VoiceAssistantIntegration = window.VoiceAssistantIntegration;
 
@@ -510,14 +521,8 @@ document.addEventListener('DOMContentLoaded', () => {
         this.updateChatBubbleMessage('Processing...');
         this.setLoading(true);
         
-        // Wait for final response (actual response will come through the backend)
-        // This simulates a server response for testing
-        setTimeout(() => {
-          // In real-world usage, the server response would come through your backend event system
-          this.handleFinalResponse({
-            message: "I've processed your request. Is there anything else you'd like to know?"
-          });
-        }, 2000);
+        // Response will come through WebSocket via the 'voice-assistant-response' event
+        // No need for setTimeout with simulated response anymore
       } catch (err) {
         console.error('Error stopping recording:', err);
       }
@@ -560,11 +565,11 @@ document.addEventListener('DOMContentLoaded', () => {
       // The main voice API endpoint - must use the store's domain for App Proxy
       this.apiEndpoint = '/apps/voice';
       
-      // The audio endpoint is initialized in VoiceAssistantIntegration
-      const audioEndpoint = '/apps/voice/audio';
+      // The WebSocket endpoint using query param instead of path segment
+      const wsEndpoint = '/apps/voice?ws=true';
       
       console.log('Using App Proxy endpoint:', this.apiEndpoint);
-      console.log('Audio endpoint is set to:', audioEndpoint);
+      console.log('WebSocket endpoint is set to:', wsEndpoint);
       
       // Log important debug information
       console.log('Shop domain:', this.shopDomain);
@@ -575,12 +580,13 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // Reinitialize voice integration with correct endpoints
       if (this.voiceIntegration) {
-        // Update the VoiceAssistantIntegration instance with the correct path
-        this.voiceIntegration.apiEndpoint = audioEndpoint;
+        // Update the VoiceAssistantIntegration instance with the correct WebSocket path
+        this.voiceIntegration.wsEndpoint = wsEndpoint;
       }
       
       return Promise.resolve({
-        apiEndpoint: this.apiEndpoint
+        apiEndpoint: this.apiEndpoint,
+        wsEndpoint: wsEndpoint
       });
     },
     

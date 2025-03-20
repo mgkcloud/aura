@@ -1,20 +1,41 @@
 /**
  * LiveKit Proxy Server for Voice AI Shopping Assistant (ES Module Version)
  * 
- * This server handles WebSocket connections for audio streaming
- * between the browser and the Replicate API using Ultravox model.
+ * This server handles both WebSocket and HTTP communications:
+ * - WebSocket for legacy audio streaming (backward compatible)
+ * - HTTP POST for audio data transmission
+ * - Server-Sent Events (SSE) for streaming responses
+ * 
+ * The server maintains session state and handles audio processing
+ * through the Replicate API using the Ultravox model.
  */
 
 import { WebSocketServer } from 'ws';
 import http from 'http';
 import fetch from 'node-fetch';
+import { URL } from 'url';
 
 // Store active WebSocket connections by participant ID
 const activeConnections = new Map();
 
+// Track SSE connections by session ID
+const sseConnections = new Map();
+
 // Audio buffer for accumulating chunks before processing
 const audioBuffers = new Map();
 const BUFFER_SIZE = 2; // Number of chunks before sending to Replicate
+
+// Session management
+const activeSessions = new Map(); // sessionId -> {participantId, shopId, lastActive}
+const SESSION_TIMEOUT = 10 * 60 * 1000; // 10 minutes
+
+// CORS headers for HTTP responses
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Accept',
+  'Access-Control-Max-Age': '86400'
+};
 
 // Default response when Replicate API is unavailable
 const fallbackResponse = {
@@ -25,9 +46,12 @@ const fallbackResponse = {
 // Singleton instance to prevent multiple server initializations
 let serverInstance = null;
 
+// Session cleanup interval
+let sessionCleanupInterval = null;
+
 /**
  * Initialize LiveKit proxy server
- * @returns {Promise<WebSocketServer>} The WebSocket server instance
+ * @returns {Promise<object>} The server instance
  */
 export async function initLiveKitProxy() {
   // Return existing server if already initialized
@@ -36,24 +60,60 @@ export async function initLiveKitProxy() {
     return serverInstance;
   }
 
-  // Create HTTP server for both WebSocket and health checks
-  const server = http.createServer((req, res) => {
-    // Add a health check endpoint
-    if (req.url === '/health') {
+  // Create HTTP server for WebSocket, SSE, HTTP POST and health checks
+  const server = http.createServer(async (req, res) => {
+    // Set CORS headers for all responses
+    Object.entries(CORS_HEADERS).forEach(([key, value]) => {
+      res.setHeader(key, value);
+    });
+    
+    // Parse URL
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const path = url.pathname;
+    
+    // Handle OPTIONS preflight requests
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    
+    // Health check endpoint
+    if (path === '/health') {
       res.writeHead(200);
-      res.end('OK');
+      res.end(JSON.stringify({
+        status: 'ok',
+        version: '1.1.0',
+        connections: {
+          websocket: activeConnections.size,
+          sse: sseConnections.size,
+          sessions: activeSessions.size
+        }
+      }));
+      return;
+    }
+    
+    // SSE endpoint for streaming responses
+    if (req.method === 'GET' && url.searchParams.get('stream') === 'true') {
+      handleSSEConnection(req, res, url);
+      return;
+    }
+    
+    // Audio POST endpoint
+    if (req.method === 'POST' && path === '/') {
+      handleAudioPost(req, res);
       return;
     }
     
     // Handle other routes
     res.writeHead(404);
-    res.end('Not found');
+    res.end(JSON.stringify({ error: 'Not found' }));
   });
   
-  // Create WebSocket server
+  // Create WebSocket server (for backward compatibility)
   const wss = new WebSocketServer({ server });
   
-  // Handle WebSocket connections
+  // Handle WebSocket connections (legacy support)
   wss.on('connection', (ws) => {
     console.log('New WebSocket connection established');
     let participantId = null;
@@ -61,12 +121,13 @@ export async function initLiveKitProxy() {
     ws.on('message', async (message) => {
       try {
         const data = JSON.parse(message.toString());
-        console.log(`Received message type: ${data.type}`);
+        console.log(`Received WebSocket message type: ${data.type}`);
         
         // Handle initialization message
         if (data.type === 'init') {
           participantId = data.participantId;
           const shopId = data.shopId;
+          const sessionId = data.sessionId;
           
           console.log(`Initializing participant: ${participantId} from shop: ${shopId}`);
           
@@ -74,16 +135,30 @@ export async function initLiveKitProxy() {
           activeConnections.set(participantId, {
             ws,
             shopId,
+            sessionId,
             cartContext: data.cartContext || null
           });
           
           // Initialize audio buffer
-          audioBuffers.set(participantId, []);
+          if (!audioBuffers.has(participantId)) {
+            audioBuffers.set(participantId, []);
+          }
+          
+          // If we have a session ID, link this participant to the session
+          if (sessionId && activeSessions.has(sessionId)) {
+            const session = activeSessions.get(sessionId);
+            session.participantId = participantId;
+            session.lastActive = Date.now();
+            activeSessions.set(sessionId, session);
+            
+            console.log(`Linked participant ${participantId} to session ${sessionId}`);
+          }
           
           // Send acknowledgement
           ws.send(JSON.stringify({
             type: 'init_ack',
-            participantId
+            participantId,
+            sessionId
           }));
         } 
         // Handle audio data
@@ -91,10 +166,14 @@ export async function initLiveKitProxy() {
           console.log(`Received audio data from ${participantId}`);
           const audioData = data.data;
           const requestId = data.requestId || `req-${Date.now()}`;
+          const chunkNumber = data.chunkNumber || 0;
           
-          // Add to buffer
+          // Add to buffer with chunk number for ordering
           const buffer = audioBuffers.get(participantId) || [];
-          buffer.push(audioData);
+          buffer.push({
+            data: audioData,
+            chunkNumber
+          });
           audioBuffers.set(participantId, buffer);
           
           // Process buffer if we have enough chunks
@@ -107,12 +186,23 @@ export async function initLiveKitProxy() {
           console.log(`Received cart context from ${participantId}`);
           const connection = activeConnections.get(participantId);
           if (connection) {
-            connection.cartContext = data;
+            connection.cartContext = data.cartContext;
             activeConnections.set(participantId, connection);
           }
         }
       } catch (error) {
         console.error('Error processing WebSocket message:', error);
+        
+        // Try to send error response back to client
+        try {
+          ws.send(JSON.stringify({
+            type: 'error',
+            error: 'Error processing message',
+            message: error.message
+          }));
+        } catch (sendError) {
+          console.error('Error sending error response:', sendError);
+        }
       }
     });
     
@@ -120,8 +210,27 @@ export async function initLiveKitProxy() {
     ws.on('close', () => {
       if (participantId) {
         console.log(`Participant disconnected: ${participantId}`);
+        
+        // Get connection info before deleting
+        const connection = activeConnections.get(participantId);
+        
+        // Clean up connection
         activeConnections.delete(participantId);
-        audioBuffers.delete(participantId);
+        
+        // Note: Don't delete audio buffer immediately in case we're processing
+        // It will be cleaned up in the session cleanup process
+        
+        // If this connection was associated with a session, update the session
+        if (connection && connection.sessionId) {
+          const sessionId = connection.sessionId;
+          if (activeSessions.has(sessionId)) {
+            const session = activeSessions.get(sessionId);
+            // Don't remove participantId yet in case it reconnects
+            session.lastActive = Date.now();
+            session.wsActive = false;
+            activeSessions.set(sessionId, session);
+          }
+        }
       } else {
         console.log('Unknown participant disconnected');
       }
@@ -130,8 +239,24 @@ export async function initLiveKitProxy() {
     // Handle WebSocket errors
     ws.on('error', (error) => {
       console.error('WebSocket error:', error);
+      
+      // Try to send error response back to client
+      try {
+        ws.send(JSON.stringify({
+          type: 'error',
+          error: 'WebSocket error',
+          message: error.message
+        }));
+      } catch (sendError) {
+        console.error('Error sending error response:', sendError);
+      }
     });
   });
+  
+  // Start session cleanup interval
+  if (!sessionCleanupInterval) {
+    startSessionCleanup();
+  }
   
   // Start HTTP server
   const PORT = process.env.PORT || 7880;
@@ -145,13 +270,311 @@ export async function initLiveKitProxy() {
   await new Promise((resolve) => {
     server.listen(PORT, () => {
       console.log(`LiveKit proxy server listening on port ${PORT}`);
-      console.log(`Health check available at http://localhost:${PORT}/health`);
+      console.log(`Services available:`);
+      console.log(`- WebSocket: ws://localhost:${PORT}`);
+      console.log(`- SSE Stream: http://localhost:${PORT}?stream=true`);
+      console.log(`- Audio POST: http://localhost:${PORT}`);
+      console.log(`- Health Check: http://localhost:${PORT}/health`);
       resolve();
     });
   });
   
-  serverInstance = wss;
-  return wss;
+  // Store both the WebSocket server and HTTP server for proper cleanup
+  serverInstance = {
+    wss,
+    server,
+    port: PORT
+  };
+  
+  return serverInstance;
+}
+
+/**
+ * Handle SSE (Server-Sent Events) connection
+ * @param {http.IncomingMessage} req - The request object
+ * @param {http.ServerResponse} res - The response object
+ * @param {URL} url - The parsed URL object
+ */
+async function handleSSEConnection(req, res, url) {
+  // Extract shop domain from query params
+  const shopDomain = url.searchParams.get('shop');
+  
+  if (!shopDomain) {
+    res.writeHead(400);
+    res.end(JSON.stringify({ error: 'shop parameter is required' }));
+    return;
+  }
+  
+  console.log(`Setting up SSE connection for shop: ${shopDomain}`);
+  
+  // Generate a unique session ID
+  const sessionId = `sse-${shopDomain}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  console.log(`Created new SSE session: ${sessionId}`);
+  
+  // Set SSE headers
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no'
+  });
+  
+  // Initialize session data
+  activeSessions.set(sessionId, {
+    shopId: shopDomain,
+    lastActive: Date.now(),
+    sseActive: true,
+    participantId: null // Will be set when WebSocket connection is established
+  });
+  
+  // Send initial message with session ID
+  sendSSE(res, 'open', { sessionId });
+  
+  // Set up heartbeat interval
+  const heartbeatInterval = setInterval(() => {
+    try {
+      if (req.socket.destroyed) {
+        clearInterval(heartbeatInterval);
+        return;
+      }
+      
+      sendSSE(res, 'heartbeat', Date.now());
+      
+      // Update last active timestamp
+      if (activeSessions.has(sessionId)) {
+        const session = activeSessions.get(sessionId);
+        session.lastActive = Date.now();
+        activeSessions.set(sessionId, session);
+      }
+    } catch (error) {
+      console.error('Error sending heartbeat:', error);
+      clearInterval(heartbeatInterval);
+    }
+  }, 30000);
+  
+  // Store the SSE connection info
+  sseConnections.set(sessionId, {
+    res,
+    heartbeatInterval,
+    shopDomain
+  });
+  
+  // Handle connection close
+  req.on('close', () => {
+    console.log(`SSE connection closed for session: ${sessionId}`);
+    
+    // Clean up
+    clearInterval(heartbeatInterval);
+    sseConnections.delete(sessionId);
+    
+    // Update session state but don't remove it yet (websocket might still be active)
+    if (activeSessions.has(sessionId)) {
+      const session = activeSessions.get(sessionId);
+      session.sseActive = false;
+      session.lastActive = Date.now();
+      activeSessions.set(sessionId, session);
+    }
+  });
+  
+  // Handle aborted connection
+  req.on('aborted', () => {
+    console.log(`SSE connection aborted for session: ${sessionId}`);
+    
+    // Clean up
+    clearInterval(heartbeatInterval);
+    sseConnections.delete(sessionId);
+    
+    // Update session state
+    if (activeSessions.has(sessionId)) {
+      const session = activeSessions.get(sessionId);
+      session.sseActive = false;
+      session.lastActive = Date.now();
+      activeSessions.set(sessionId, session);
+    }
+  });
+}
+
+/**
+ * Handle audio data sent via HTTP POST
+ * @param {http.IncomingMessage} req - The request object
+ * @param {http.ServerResponse} res - The response object
+ */
+async function handleAudioPost(req, res) {
+  try {
+    // Read and parse the request body
+    const chunks = [];
+    for await (const chunk of req) {
+      chunks.push(chunk);
+    }
+    const bodyBuffer = Buffer.concat(chunks);
+    const body = JSON.parse(bodyBuffer.toString());
+    
+    // Extract data from the body
+    const { audio, shopDomain, requestId, sessionId, chunkNumber = 0 } = body;
+    
+    console.log(`Received audio POST request:`);
+    console.log(`- Shop: ${shopDomain}`);
+    console.log(`- RequestID: ${requestId}`);
+    console.log(`- SessionID: ${sessionId}`);
+    console.log(`- ChunkNumber: ${chunkNumber}`);
+    
+    // Validate required fields
+    if (!audio) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'audio data is required' }));
+      return;
+    }
+    
+    if (!shopDomain) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'shopDomain is required' }));
+      return;
+    }
+    
+    // Generate a unique request ID if not provided
+    const uniqueRequestId = requestId || `req-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    
+    // Process session info
+    let participantId;
+    
+    // If we have a session ID, try to find the participant ID
+    if (sessionId && activeSessions.has(sessionId)) {
+      const session = activeSessions.get(sessionId);
+      session.lastActive = Date.now();
+      
+      // Use existing participant ID if available, or create a new one
+      participantId = session.participantId || `post-${sessionId}-${Date.now()}`;
+      
+      // Update the session with the participant ID if it was newly created
+      if (session.participantId !== participantId) {
+        session.participantId = participantId;
+        activeSessions.set(sessionId, session);
+      }
+    } else {
+      // No session or invalid session, create a new participant ID
+      participantId = `post-${shopDomain}-${Date.now()}`;
+    }
+    
+    console.log(`Using participant ID: ${participantId} for audio processing`);
+    
+    // Store connection info if not already present
+    if (!activeConnections.has(participantId)) {
+      activeConnections.set(participantId, {
+        shopId: shopDomain,
+        sessionId,
+        postOnly: true  // Flag this as a POST-only participant
+      });
+    }
+    
+    // Initialize audio buffer if needed
+    if (!audioBuffers.has(participantId)) {
+      audioBuffers.set(participantId, []);
+    }
+    
+    // Add audio data to buffer with chunk info
+    const buffer = audioBuffers.get(participantId);
+    buffer.push({
+      data: audio,
+      chunkNumber: parseInt(chunkNumber, 10)
+    });
+    audioBuffers.set(participantId, buffer);
+    
+    // Process buffer if we have enough chunks
+    if (buffer.length >= BUFFER_SIZE) {
+      try {
+        // Process asynchronously but don't await
+        processAudioBuffer(participantId, uniqueRequestId);
+        
+        // Return success immediately
+        res.writeHead(202);
+        res.end(JSON.stringify({ 
+          status: 'processing',
+          requestId: uniqueRequestId
+        }));
+      } catch (error) {
+        console.error('Error starting audio processing:', error);
+        res.writeHead(500);
+        res.end(JSON.stringify({ error: 'Error starting audio processing' }));
+      }
+    } else {
+      // Not enough chunks yet, just acknowledge receipt
+      res.writeHead(200);
+      res.end(JSON.stringify({ 
+        status: 'received',
+        requestId: uniqueRequestId,
+        chunksReceived: buffer.length,
+        chunksNeeded: BUFFER_SIZE
+      }));
+    }
+  } catch (error) {
+    console.error('Error handling audio POST:', error);
+    res.writeHead(400);
+    res.end(JSON.stringify({ error: 'Invalid request data' }));
+  }
+}
+
+/**
+ * Send an SSE event to the client
+ * @param {http.ServerResponse} res - The response object
+ * @param {string} event - The event name
+ * @param {*} data - The data to send
+ */
+function sendSSE(res, event, data) {
+  try {
+    // Skip if response is already sent or connection closed
+    if (res.writableEnded || res.writableFinished) {
+      return;
+    }
+    
+    const sseData = typeof data === 'object' ? JSON.stringify(data) : data;
+    
+    // Construct SSE message
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${sseData}\n\n`);
+  } catch (error) {
+    console.error(`Error sending SSE event ${event}:`, error);
+  }
+}
+
+/**
+ * Start session cleanup interval
+ */
+function startSessionCleanup() {
+  if (sessionCleanupInterval) {
+    clearInterval(sessionCleanupInterval);
+  }
+  
+  sessionCleanupInterval = setInterval(() => {
+    const now = Date.now();
+    
+    // Clean up expired sessions
+    for (const [sessionId, session] of activeSessions.entries()) {
+      // Check if session is expired
+      if (now - session.lastActive > SESSION_TIMEOUT) {
+        console.log(`Cleaning up expired session: ${sessionId}`);
+        
+        // Clean up associated resources
+        const participantId = session.participantId;
+        if (participantId) {
+          console.log(`Cleaning up participant: ${participantId}`);
+          activeConnections.delete(participantId);
+          audioBuffers.delete(participantId);
+        }
+        
+        // Remove SSE connection if it exists
+        if (sseConnections.has(sessionId)) {
+          const { heartbeatInterval } = sseConnections.get(sessionId);
+          clearInterval(heartbeatInterval);
+          sseConnections.delete(sessionId);
+        }
+        
+        // Finally remove the session
+        activeSessions.delete(sessionId);
+      }
+    }
+  }, 60000); // Run cleanup every minute
+  
+  console.log('Session cleanup interval started');
 }
 
 /**
@@ -169,13 +592,13 @@ async function processAudioBuffer(participantId, requestId) {
   }
   
   // Get buffer and create a copy before clearing
-  const buffer = [...(audioBuffers.get(participantId) || [])];
+  const bufferItems = [...(audioBuffers.get(participantId) || [])];
   
   // Clear the buffer to allow for immediate next audio processing
   audioBuffers.set(participantId, []);
   
   // If buffer is empty, return early
-  if (buffer.length === 0) {
+  if (bufferItems.length === 0) {
     console.warn(`Empty buffer for participant ${participantId}`);
     return;
   }
@@ -183,11 +606,42 @@ async function processAudioBuffer(participantId, requestId) {
   try {
     let result;
     
+    // Sort buffer items by chunk number if available
+    bufferItems.sort((a, b) => {
+      // If both items have chunkNumber, sort by it
+      if (a.chunkNumber !== undefined && b.chunkNumber !== undefined) {
+        return a.chunkNumber - b.chunkNumber;
+      }
+      
+      // If only one has chunkNumber, prioritize the one with it
+      if (a.chunkNumber !== undefined) return -1;
+      if (b.chunkNumber !== undefined) return 1;
+      
+      // If neither has chunkNumber, keep original order
+      return 0;
+    });
+    
+    console.log(`Sorted ${bufferItems.length} audio chunks by sequence number`);
+    
+    // Extract audio data from buffer items
+    const audioData = bufferItems.map(item => {
+      // Handle both objects with data property and direct strings
+      return typeof item === 'object' && item.data ? item.data : item;
+    });
+    
+    // Combine audio chunks
+    const combinedAudio = audioData.join('');
+    
+    // Send processing status to participant
+    sendResultToParticipant(participantId, {
+      type: 'status',
+      status: 'processing',
+      message: "I'm processing your request...",
+    }, requestId);
+    
     // Only attempt Replicate API call if credentials are available
     if (process.env.REPLICATE_API_TOKEN && process.env.ULTRAVOX_MODEL_VERSION) {
       console.log(`Starting Replicate API request with shop: ${connection.shopId}`);
-      // Combine audio chunks
-      const combinedAudio = buffer.join('');
       
       // Validate the audio data
       if (!combinedAudio || combinedAudio.length < 100) {
@@ -201,24 +655,24 @@ async function processAudioBuffer(participantId, requestId) {
         console.log('Audio data appears to be valid base64 format');
       }
       
-      // Use a test command for easier debugging
-      const testCommand = "What products do you have?";
-      
       // Prepare request payload with shop context
       const payload = {
         version: process.env.ULTRAVOX_MODEL_VERSION,
         input: {
-          command: testCommand, // Add a test command to help with debugging
+          command: '',  // Empty command, using audio only
           audio: combinedAudio,
           shop_domain: connection.shopId,
-          cart_context: connection.cartContext ? JSON.stringify(connection.cartContext.items) : ''
+          cart_context: connection.cartContext ? 
+            (typeof connection.cartContext === 'string' ? 
+              connection.cartContext : 
+              JSON.stringify(connection.cartContext)) : 
+            ''
         }
       };
       
       console.log(`Sending prediction to Replicate for shop ${connection.shopId}`);
       console.log(`Using model version: ${process.env.ULTRAVOX_MODEL_VERSION}`);
       console.log(`Audio data length: ${combinedAudio.length} characters`);
-      console.log(`Test command: ${testCommand}`);
       
       try {
         // Call Replicate API
@@ -255,7 +709,8 @@ async function processAudioBuffer(participantId, requestId) {
           // Send initial "processing" message to client
           sendResultToParticipant(participantId, {
             message: "I'm processing your request, please wait a moment...",
-            action: "none"
+            action: "none",
+            status: "processing"
           }, requestId);
           
           // Poll for complete result
@@ -318,13 +773,7 @@ async function processAudioBuffer(participantId, requestId) {
     console.error('Error processing audio:', error);
     
     // Send error response
-    if (connection?.ws.readyState === 1) { // 1 = WebSocket.OPEN
-      connection.ws.send(JSON.stringify({
-        type: 'error',
-        error: 'Error processing audio',
-        requestId
-      }));
-    }
+    sendErrorToParticipant(participantId, 'Error processing audio', requestId);
   }
 }
 

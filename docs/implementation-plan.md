@@ -1,577 +1,679 @@
+# Voice Assistant Implementation Plan for Shopify
 
-
+## Overview
 The Voice AI Shopping Assistant is a Shopify app that enables voice-based navigation and assistance for online shoppers. It consists of a frontend theme extension providing a floating voice assistant button and an expandable information window, with backend processing powered by the Ultravox AI model through Replicate.
 
-### Core Components:
-- Shopify App (Remix framework)
-- Theme Extension (voice assistant interface)
-- LiveKit WebSocket server (audio streaming)
-- Ultravox AI model (deployed on Replicate)
-- Admin configuration interface
+## 1. Architecture & Core Components
 
-## 2. Technical Architecture
+### 1.1. Core Components
+- **Shopify App**: Built with Remix framework for backend processing
+- **Theme Extension**: Frontend voice assistant interface for shoppers
+- **Audio Processing**: Server for handling real-time audio streaming
+- **AI Model**: Ultravox via Replicate API for speech understanding and tool calling
+- **Tool Framework**: System for executing product searches and UI actions based on user intent
 
-### 2.1 Data Flow
-1. User activates the voice assistant button on the Shopify storefront
-2. Audio is captured in the browser and streamed via WebSockets to the LiveKit proxy
-3. LiveKit proxy buffers audio chunks and sends them to the Ultravox model on Replicate
-4. Ultravox processes the audio and determines user intent
-5. Backend prepares response data and navigation instructions
-6. Frontend displays information in the floating window and/or navigates to the appropriate page
+### 1.2. Data Flow
+1. Shopper activates the voice assistant button on the storefront
+2. Audio is captured in the browser and sent to the backend
+3. Backend processes the audio and sends to the Ultravox model
+4. Ultravox generates a response with optional tool calls
+5. Backend executes any tool calls (product search, UI actions)
+6. Response is streamed back to the frontend
+7. Frontend displays information and/or executes navigation
 
-### 2.2 Technology Stack
-- **Frontend**: React, Shopify Polaris, WebSocket client
-- **Backend**: Node.js, Remix, WebSocket server (LiveKit)
-- **Database**: Prisma ORM with SQLite (dev) / PostgreSQL (prod)
-- **AI Processing**: Ultravox model via Replicate API
-- **APIs**: Shopify Admin API, Shopify Storefront API
-- **Infrastructure**: Docker for local development
+## 2. Server-Side Implementation
 
-## 3. Implementation Plan
+### 2.1. Update Proxy Route Handler
+- **File**: `/app/routes/proxy.tsx`
+- **Tasks**:
+  - ✅ Implement WebSocket connection handling
+    - ✅ Configure WebSocket connection setup
+    - ✅ Add message parsing and routing
+    - ✅ Implement participant tracking
+  - 🔄 Convert to HTTP POST endpoint for audio data submission
+    - ✅ Set up POST handler for audio chunks
+    - ✅ Add support for base64 encoded audio
+    - 🔄 Implement chunking and progress tracking
+  - 🔄 Implement SSE (Server-Sent Events) for response streaming
+    - ✅ Set up initial SSE handler function
+    - 🔄 Add proper headers for SSE connections
+    - 🔄 Create streaming response format
+    - 🔄 Implement heartbeat for connection maintenance
+  - ✅ Set up proper CORS headers for cross-origin requests
+    - ✅ Add CORS headers to all responses
+    - ✅ Support OPTIONS preflight requests
+  - ✅ Add participant tracking and session management
+    - ✅ Generate unique participant IDs
+    - ✅ Store session data with shop information
 
-### 3.1 Development Environment Setup
+### 2.2. Configure Audio Processing Server
+- **File**: `/app/livekit-proxy.server.js`
+- **Tasks**:
+  - ✅ Fix ES module compatibility issues
+    - ✅ Update import/export syntax
+    - ✅ Configure proper module loading
+  - ✅ Configure audio buffer management for optimal processing
+    - ✅ Set up buffer sizes for speech recognition
+    - ✅ Implement proper audio parameter handling
+  - ✅ Implement connection with Replicate API for Ultravox model
+    - ✅ Configure API authentication
+    - ✅ Set up proper request format
+    - ✅ Add error handling for API calls
+  - ✅ Set up connection error handling
+    - ✅ Add timeout handling
+    - ✅ Implement reconnection logic
+  - ✅ Ensure proper cleanup of resources when connections close
+    - ✅ Clean up WebSocket connections
+    - ✅ Release audio resources
+  - 🔄 Implement streaming responses via SSE
+    - 🔄 Convert chunked responses to SSE format
+    - 🔄 Add event typing for different message types
+    - 🔄 Implement progressive response handling
 
-#### 3.1.1 Initial Project Configuration
-- [x] Initialize Shopify app with Remix framework
-- [x] Set up local development environment
-- [x] Install necessary dependencies
-- [x] Configure basic directory structure
-- [ ] Create comprehensive .env.example file with all required variables
-- [ ] Complete .env file with development credentials
-  - [ ] Add Shopify API key and secret
-  - [ ] Configure Replicate API token
-  - [ ] Set LiveKit credentials
-  - [ ] Set database URL
-- [ ] Initialize Git repository with proper .gitignore
-- [ ] Configure TypeScript settings for the project
-- [ ] Set up ESLint and Prettier for code formatting
-- [ ] Document local setup process in README.md
+### 2.3. Add WebSocket Support Route
+- **File**: `/app/routes/proxy.ws.tsx`
+- **Tasks**:
+  - ✅ Create dedicated WebSocket route
+    - ✅ Set up loader function for WebSocket connections
+    - ✅ Configure proper headers
+  - 🔄 Implement connection upgrade handling
+    - 🔄 Detect WebSocket connection requests
+    - 🔄 Add support for connection parameters
+  - 🔄 Add error handling for connection failures
+    - 🔄 Implement proper error responses
+    - 🔄 Add logging for connection issues
 
-#### 3.1.2 Docker Configuration
-- [x] Create Dockerfile for LiveKit proxy
-- [x] Set up docker-compose.yml file
-- [ ] Configure Docker volumes for persistent data
-- [ ] Create Docker network configuration
-- [ ] Set up environment variable passing to containers
-- [ ] Document Docker container startup process
-- [ ] Create container health checks
-- [ ] Implement container logging configuration
+## 3. Client-Side Implementation
 
-#### 3.1.3 LiveKit Server Setup
-- [ ] Pull LiveKit server Docker image
-- [ ] Configure LiveKit server environment variables
-- [ ] Set up LiveKit authentication
-- [ ] Create startup script for LiveKit server
-- [ ] Configure LiveKit room management
-- [ ] Set up LiveKit monitoring
-- [ ] Test LiveKit server connection
-- [ ] Document LiveKit server configuration
+### 3.1. Update Voice Assistant Integration
+- **File**: `/extensions/voice-assistant/assets/voice-assistant-integration.js`
+- **Tasks**:
+  - ✅ Implement high-quality audio capture
+    - ✅ Configure optimal audio parameters (16kHz, mono)
+    - ✅ Add noise suppression and echo cancellation
+    - ✅ Implement proper audio track management
+  - ✅ Set optimal audio parameters (16kHz, mono, noise reduction)
+    - ✅ Configure constraints for getUserMedia
+    - ✅ Set up proper audio processing nodes
+  - 🔄 Replace WebSocket sending with HTTP POST
+    - 🔄 Create fetch-based audio sending function
+    - 🔄 Implement proper error handling
+    - 🔄 Add retry logic for failed requests
+  - 🔄 Implement SSE connection for receiving responses
+    - 🔄 Create EventSource connection
+    - 🔄 Set up event listeners for different message types
+    - 🔄 Implement reconnection logic
+  - ✅ Provide visualizer data for UI
+    - ✅ Extract frequency data from audio stream
+    - ✅ Format data for visualization
+    - ✅ Implement callback mechanism for UI updates
 
-#### 3.1.4 Local Development Workflow
-- [ ] Create npm scripts for common development tasks
-- [ ] Set up concurrent running of Shopify CLI and LiveKit
-- [ ] Configure hot-reloading for development
-- [ ] Create debugging configuration
-- [ ] Document local development workflow
-- [ ] Set up VS Code configurations (optional)
-- [ ] Create troubleshooting guide for common setup issues
+### 3.2. Update Voice Assistant Interface
+- **File**: `/extensions/voice-assistant/assets/voice-assistant.js`
+- **Tasks**:
+  - ✅ Create responsive visualization that works with audio levels
+    - ✅ Implement visual effects based on audio frequency
+    - ✅ Add smooth transitions between audio states
+    - ✅ Create fallback visualization for inactive state
+  - ✅ Implement proper error handling for connection failures
+    - ✅ Display user-friendly error messages
+    - ✅ Add retry functionality
+    - ✅ Implement graceful degradation
+  - ✅ Add UI state management for different connection states
+    - ✅ Create distinct visual states for listening/processing/speaking
+    - ✅ Add proper transitions between states
+    - ✅ Implement loading indicators
+  - ✅ Add proper resource cleanup to prevent memory leaks
+    - ✅ Stop audio tracks when not in use
+    - ✅ Cancel animation frames when hidden
+    - ✅ Remove event listeners when destroying
+  - 🔄 Implement SSE event listeners for streaming responses
+    - 🔄 Create event handling functions for different message types
+    - 🔄 Update UI based on streaming response chunks
+    - 🔄 Add progressive UI updates as response arrives
+  - ❌ Add text-to-speech for voice responses
+    - ❌ Implement Web Speech API integration
+    - ❌ Configure voice settings
+    - ❌ Add playback controls
+    - ❌ Implement fallback for unsupported browsers
 
-### 3.2 Database Setup and Configuration
+### 3.3. Update App Block
+- **File**: `/extensions/voice-assistant/blocks/voice-assistant.liquid`
+- **Tasks**:
+  - ✅ Ensure proper script loading
+    - ✅ Add correct script tags and dependencies
+    - ✅ Set up async loading where appropriate
+  - ✅ Set up theme extension structure
+    - ✅ Configure block structure
+    - ✅ Add required HTML elements
+  - ✅ Configure extension settings in TOML file
+    - ✅ Set up extension metadata
+    - ✅ Add settings schema
 
-#### 3.2.1 Prisma Configuration
-- [x] Initialize Prisma ORM
-- [x] Create initial database schema
-- [ ] Define session storage models
-- [ ] Create assistant configuration models
-- [ ] Set up usage analytics models
-- [ ] Configure Prisma client generation
-- [ ] Document database schema design
+## 4. AI Model Integration
 
-#### 3.2.2 Database Migration Management
-- [ ] Create initial migration scripts
-- [ ] Set up migration process for development
-- [ ] Configure migration process for production
-- [ ] Create database seeding scripts (if needed)
-- [ ] Document migration procedures
-- [ ] Implement database backup strategy
-- [ ] Test migration rollback procedures
+### 4.1. Ultravox Model Integration
+- **Tasks**:
+  - ✅ Set up Replicate account and API access
+    - ✅ Create account and generate API key
+    - ✅ Configure authentication
+  - ✅ Configure Ultravox model parameters
+    - ✅ Set up model version
+    - ✅ Configure input parameters
+  - ✅ Implement audio data preparation for model
+    - ✅ Format audio data correctly
+    - ✅ Add metadata and context
+  - ✅ Set up proper request format
+    - ✅ Create request structure
+    - ✅ Add shop context
+  - 🔄 Implement streaming response parsing
+    - 🔄 Create parser for streamed responses
+    - 🔄 Handle partial JSON in streams
+    - 🔄 Implement progressive processing
+  - ❌ Set up tool calling framework
+    - ❌ Define tool schemas for Ultravox
+    - ❌ Create tool execution pipeline
+    - ❌ Implement result handling
 
-#### 3.2.3 Data Access Layer
-- [ ] Create database access utilities
-- [ ] Implement CRUD operations for configuration data
-- [ ] Set up session storage functionality
-- [ ] Create analytics data capture methods
-- [ ] Implement error handling for database operations
-- [ ] Add logging for database queries
-- [ ] Create database connection pooling configuration
+### 4.2. Environment Configuration
+- **File**: `/.env` and `/.env.example`
+- **Tasks**:
+  - ✅ Add Replicate API key configuration
+    - ✅ Set up secure storage of API keys
+    - ✅ Add documentation for key setup
+  - ✅ Configure Ultravox model version
+    - ✅ Add model version variable
+    - ✅ Document version update process
+  - ✅ Set up URLs and other connection parameters
+    - ✅ Configure LiveKit URLs
+    - ✅ Set API endpoints
+    - ✅ Add timeout settings
 
-### 3.3 Shopify App Backend Implementation
+## 5. Tool Calling Framework
 
-#### 3.3.1 Authentication & Authorization
-- [x] Implement Shopify OAuth flow
-- [x] Set up session management
-- [ ] Configure required app scopes
-- [ ] Implement session validation middleware
-- [ ] Create authenticated route protection
-- [ ] Handle session expiration and renewal
-- [ ] Implement webhook verification
-- [ ] Test authentication flow end-to-end
+### 5.1. Define Tool Schema
+- **Tasks**:
+  - ❌ Create JSON schema for each tool
+    - ❌ Define common schema format
+    - ❌ Create validation functions
+  - ❌ Define product search tool parameters
+    - ❌ Specify query parameters
+    - ❌ Add filter options
+    - ❌ Define sort parameters
+  - ❌ Define UI display tool parameters
+    - ❌ Create product display parameters
+    - ❌ Add message display options
+    - ❌ Define action button parameters
+  - ❌ Define navigation tool parameters
+    - ❌ Specify URL parameters
+    - ❌ Add transition options
+    - ❌ Create confirmation parameters
 
-#### 3.3.2 Admin API Integration
-- [x] Set up GraphQL client for Admin API
-- [ ] Create product fetching utilities
-- [ ] Implement collection data retrieval
-- [ ] Set up store information queries
-- [ ] Create theme detection functionality
-- [ ] Implement API error handling
-- [ ] Add rate limiting compliance
-- [ ] Set up request caching for performance
+### 5.2. Implement Tool Execution
+- **Tasks**:
+  - ❌ Implement product search with Shopify Storefront API
+    - ❌ Create GraphQL queries for product search
+    - ❌ Add filter implementation
+    - ❌ Implement result processing
+  - ❌ Create UI display functionality
+    - ❌ Implement product display components
+    - ❌ Add message formatting
+    - ❌ Create loading states
+  - ❌ Implement page navigation
+    - ❌ Add history API integration
+    - ❌ Create smooth transitions
+    - ❌ Implement state persistence
+  - ❌ Add result formatting for frontend
+    - ❌ Create response structure
+    - ❌ Implement JSON serialization
+    - ❌ Add error handling
 
-#### 3.3.3 App Routes Configuration
-- [x] Set up core app routes
-- [ ] Implement admin dashboard route
-- [ ] Create configuration page routes
-- [ ] Set up analytics viewing routes
-- [ ] Implement WebSocket endpoints
-- [ ] Create API endpoints for frontend
-- [ ] Add health check endpoints
-- [ ] Configure 404 and error handling routes
+## 6. MVP Features to Implement
 
-#### 3.3.4 Admin Interface
-- [x] Create basic settings interface
-- [ ] Implement settings persistence
-- [ ] Create color picker component
-- [ ] Implement position selector
-- [ ] Add form validation
-- [ ] Create settings preview functionality
-- [ ] Implement settings retrieval on load
-- [ ] Add save confirmation and error handling
+### 6.1. SSE Implementation (HIGHEST PRIORITY)
+- **Files**: `/app/routes/proxy.tsx` and `/app/routes/proxy.ws.tsx`
+- **Tasks**:
+  - ✅ Convert WebSocket endpoint to support Server-Sent Events
+    - ✅ Create SSE endpoint with proper headers
+    - ✅ Implement connection handling
+    - ✅ Add participant tracking for SSE connections
+  - ✅ Implement event stream response format in backend
+    - ✅ Create standardized event format
+    - ✅ Add event types (message, error, heartbeat)
+    - ✅ Implement proper event serialization
+  - ✅ Set up appropriate headers for SSE connections
+    - ✅ Add Content-Type for event streams
+    - ✅ Configure cache control
+    - ✅ Set up CORS for SSE connections
+  - ✅ Create client-side event stream listener
+    - ✅ Implement EventSource connection
+    - ✅ Add event type handlers
+    - ✅ Create message processing pipeline
+  - ✅ Add reconnection handling for dropped connections
+    - ✅ Implement exponential backoff
+    - ✅ Add connection state tracking
+    - ✅ Create user feedback for reconnection attempts
+  - 🔄 Test with various network conditions
+    - 🔄 Simulate slow connections
+    - 🔄 Test connection drops
+    - 🔄 Verify reconnection behavior
 
-### 3.4 Audio Processing Infrastructure
+### 6.2. Audio HTTP POST Implementation
+- **Files**: `/extensions/voice-assistant/assets/voice-assistant-integration.js` and `/app/routes/proxy.tsx`
+- **Details**: 
+  - **Current Status**: Implemented. The fetch-based audio sending is now complete with proper error handling and timeout logic.
+  - **Technical Approach**: Using fetch API with proper timeouts and retry logic.
+- **Tasks**:
+  - ✅ Modify audio sending to use HTTP POST requests
+    - ✅ Create fetch-based audio sending function
+    - ✅ Implement proper content-type headers
+    - ✅ Add metadata to requests (shop, session)
+  - ✅ Implement chunking for large audio files
+    - ✅ Create optimal chunk size determination
+    - ✅ Add sequence numbering
+    - ✅ Implement chunk assembly on server
+  - ✅ Add progress tracking for audio uploads
+    - ✅ Create progress callback mechanism
+    - ✅ Add UI indicators for upload progress
+    - ✅ Implement abort capability for long uploads
+  - ✅ Configure proper request headers
+    - ✅ Set content type and length
+    - ✅ Add authentication headers
+    - ✅ Configure CORS requirements
+  - ✅ Implement error handling for failed uploads
+    - ✅ Add timeout handling
+    - ✅ Implement retry logic with backoff
+    - ✅ Create user-friendly error messages
+    - ✅ Add detailed error logging
 
-#### 3.4.0 WebRTC Implementation (PRIORITY)
-- [x] Create a high-quality WebRTC audio client in /app/utils/livekit-audio.ts
-- [x] Create an integration layer in /app/utils/voice-assistant-integration.ts
-- [x] Update the Shopify theme extension's voice-assistant.js to use our new integration
-- [x] Ensure compatibility with existing visualization code
-- [x] Fix API routing for proxied audio endpoints ("/proxy/audio" 404 error)
-- [ ] Configure proper audio track handling with LiveKit rooms
-- [ ] Set up noise cancellation and audio cleanup with Krisp integration
-- [ ] Add audio gain control for microphone boost in UI
-- [ ] Implement fallback mechanisms for unsupported browsers
-- [ ] Test WebRTC implementation across different browsers and devices
+### 6.3. Text-to-Speech Implementation
+- **Details**: 
+  - **Approach**: Use Web Speech API for browsers that support it with a fallback option.
+  - **Current Status**: Not started.
+- **Tasks**:
+  - ❌ Research TTS service options (browser-based vs. server)
+    - ❌ Evaluate Web Speech API compatibility
+    - ❌ Research cloud TTS services
+    - ❌ Compare quality and performance
+    - ❌ Create comparison document for decision
+  - ❌ Implement Web Speech API for client-side TTS
+    - ❌ Create wrapper function for synthesis
+    - ❌ Add browser compatibility detection
+    - ❌ Implement fallback mechanisms
+    - ❌ Add event handlers for speech events
+  - ❌ Configure voice parameters and settings
+    - ❌ Select appropriate voice
+    - ❌ Configure rate and pitch
+    - ❌ Add language detection and setting
+    - ❌ Create natural-sounding pauses and intonation
+  - ❌ Create audio playback functionality
+    - ❌ Implement play/pause controls
+    - ❌ Add volume adjustment
+    - ❌ Create visual indication of speaking state
+    - ❌ Implement text highlighting during speech
+  - ❌ Add controls for volume and playback rate
+    - ❌ Create user interface for controls
+    - ❌ Implement preference saving
+    - ❌ Add keyboard shortcuts
+    - ❌ Create accessibility-friendly controls
 
-#### 3.4.1 WebSocket Server Implementation
-- [x] Create WebSocket server setup
-- [x] Implement connection handling
-- [x] Set up message types and protocols
-- [x] Create participant identification system
-- [ ] Implement room management
-- [x] Add basic error handling and recovery
-- [ ] Implement ping/pong for connection health
-- [x] Set up connection state tracking
-- [x] Add logging and monitoring
-- [ ] Implement security measures (rate limiting, etc.)
-- [ ] Create reconnection logic with exponential backoff
-- [ ] Test with multiple concurrent connections
+### 6.4. Product Search Tool
+- **Details**:
+  - **Approach**: Implement a JSON schema-based tool for product searches that connects to Shopify's Storefront API.
+  - **Current Status**: Not started.
+- **Tasks**:
+  - ❌ Define product search parameters (query, filters, sort)
+    - ❌ Create schema for search parameters
+    - ❌ Define filter options (price, category, etc.)
+    - ❌ Implement sort parameters
+    - ❌ Add pagination options
+  - ❌ Implement Shopify Storefront API integration
+    - ❌ Create GraphQL query builder
+    - ❌ Implement authentication
+    - ❌ Add caching for performance
+    - ❌ Create error handling
+  - ❌ Create product result formatting
+    - ❌ Design result format structure
+    - ❌ Implement thumbnail and image handling
+    - ❌ Add price formatting
+    - ❌ Create availability indicators
+  - ❌ Add product display components
+    - ❌ Create product card component
+    - ❌ Implement product carousel
+    - ❌ Add quick view functionality
+    - ❌ Create loading states
+  - ❌ Implement navigation to product pages
+    - ❌ Add product page URL generation
+    - ❌ Implement transition effects
+    - ❌ Create breadcrumb generation
+    - ❌ Add history state management
 
-#### 3.4.2 Audio Streaming Configuration
-- [x] Implement audio buffer management
-- [x] Set up audio chunking and transmission
-- [ ] Process audio directly as streams instead of base64 chunks
-- [x] Configure optimal audio parameters for speech recognition:
-  - [x] Sample rate: 16000Hz
-  - [x] Mono audio (single channel)
-  - [x] Enable echo cancellation
-  - [x] Enable noise suppression
-  - [x] Enable auto gain control
-- [x] Implement fixed buffer sizes
-- [ ] Create audio format conversion if needed
-- [ ] Add handling for different sample rates
-- [ ] Optimize for various network conditions
-- [ ] Implement audio pipeline monitoring
-- [ ] Test with various audio inputs and conditions
+### 6.5. Enhanced Error Handling
+- **Details**:
+  - **Approach**: Create a comprehensive error handling system with meaningful user feedback and recovery mechanisms.
+  - **Current Status**: Basic error handling implemented, needs enhancement.
+- **Tasks**:
+  - 🔄 Create comprehensive error detection system
+    - 🔄 Define error categories and codes
+    - 🔄 Implement centralized error tracking
+    - 🔄 Create error logging pipeline
+    - 🔄 Add error severity classification
+  - 🔄 Implement meaningful error messages for users
+    - 🔄 Create user-friendly message templates
+    - 🔄 Add contextual help suggestions
+    - 🔄 Implement action recommendations
+    - 🔄 Create error message localization
+  - 🔄 Add fallback mechanisms for different failure points
+    - 🔄 Implement feature degradation paths
+    - 🔄 Create fallback UI states
+    - 🔄 Add offline support where possible
+    - 🔄 Implement text input fallback for voice failures
+  - 🔄 Create a recovery hierarchy for degraded operation
+    - 🔄 Define feature importance hierarchy
+    - 🔄 Implement progressive enhancement
+    - 🔄 Create recovery sequence for reconnection
+    - 🔄 Add state persistence for recovery
+  - 🔄 Implement error logging and monitoring
+    - 🔄 Create detailed error logs
+    - 🔄 Add error categorization
+    - 🔄 Implement log collection
+    - 🔄 Create monitoring dashboard
 
-#### 3.4.3 LiveKit Proxy Implementation
-- [x] Create LiveKit proxy server
-- [x] Fix ES module compatibility issues in LiveKit proxy server
-- [x] Update Dockerfile and Docker Compose configuration
-- [x] Ensure proper WebSocket protocol handling (ws:// vs wss://)
-- [x] Add CORS headers for cross-origin compatibility
-- [x] Set up participant tracking
-- [ ] Implement authentication token generation
-- [x] Create session context maintenance
-- [x] Add error handling and logging
-- [x] Implement resource cleanup procedures
-- [ ] Test proxy with various client scenarios
+### 6.6. Backend LiveKit Proxy Updates
+- **Files**: `/app/livekit-proxy.server.js` and related Docker configurations
+- **Details**:
+  - **Current Status**: Only supports WebSocket, lacks HTTP POST and SSE handling
+  - **Technical Approach**: Update server to handle both communication methods
+- **Tasks**:
+  - 🔄 Add HTTP endpoint for audio POST requests
+    - 🔄 Extend the http.createServer handler to process POST requests
+    - 🔄 Add proper content-type and CORS handling
+    - 🔄 Implement audio buffer handling from POST data
+    - 🔄 Support chunk sequence tracking for better audio assembly
+  - 🔄 Implement SSE support for streaming responses
+    - 🔄 Create handler for SSE connection requests
+    - 🔄 Implement proper SSE headers and event formatting
+    - 🔄 Add support for different event types (message, result, error)
+    - 🔄 Create heartbeat mechanism to keep connections alive
+  - 🔄 Add session management for SSE connections
+    - 🔄 Create session tracking store with unique IDs
+    - 🔄 Link sessions to shop domains and participant IDs
+    - 🔄 Implement session expiration and cleanup
+    - 🔄 Associate audio POST requests with active sessions
+  - 🔄 Update Docker configuration for new server capabilities
+    - 🔄 Ensure proper environment variables are passed
+    - 🔄 Update health check to verify both WebSocket and HTTP endpoints
+    - 🔄 Add volume mounts for easier development and debugging
+    - 🔄 Implement proper logging for both connection types
+  - 🔄 Update server.js entry point
+    - 🔄 Add graceful shutdown handlers for all connection types
+    - 🔄 Implement cleaner error handling and reporting
+    - 🔄 Add proper startup sequence logging
 
-#### 3.4.4 Error Handling and Recovery
-- [ ] Implement connection error detection
-- [ ] Create multiple fallback mechanisms:
-  - [ ] WebRTC → MediaRecorder → SpeechRecognition API
-- [ ] Add automatic reconnection logic with exponential backoff
-- [ ] Implement graceful degradation options
-- [ ] Create user-friendly error messages
-- [ ] Add logging for error diagnostic purposes
-- [ ] Set up alerting for critical failures
-- [ ] Test recovery from various failure scenarios
+### 6.7. Frontend SSE Error Handling Improvements
+- **Files**: `/extensions/voice-assistant/assets/voice-assistant-integration.js` and `/extensions/voice-assistant/assets/voice-assistant.js`
+- **Details**:
+  - **Current Status**: Basic SSE implementation with error handling deficiencies
+  - **Technical Approach**: Enhance error detection, user feedback, and reconnection logic
+- **Tasks**:
+  - 🔄 Fix EventSource URL formatting and connection issues
+    - 🔄 Correct SSE URL parameter format (`?stream=true&shop=` instead of concatenation)
+    - 🔄 Update references to endpoint variables in all files
+    - 🔄 Fix duplicate event listeners for 'open' events
+    - 🔄 Implement proper session ID tracking across reconnects
+  - 🔄 Enhance error detection for SSE connections
+    - 🔄 Properly handle various readyState values (0=connecting, 1=open, 2=closed)
+    - 🔄 Improve error handling for missing or undefined event.data
+    - 🔄 Add proper error classification for network vs. server errors
+    - 🔄 Implement more robust error event parsing
+  - 🔄 Improve reconnection logic
+    - 🔄 Implement exponential backoff with jitter
+    - 🔄 Add max retry limits with proper user feedback
+    - 🔄 Preserve session context during reconnects when possible
+    - 🔄 Add recovery state to resume interrupted voice sessions
+  - 🔄 Enhance user feedback during connection issues
+    - 🔄 Add visual indicators for connection state
+    - 🔄 Provide meaningful error messages based on error type
+    - 🔄 Update UI elements to reflect connection status
+    - 🔄 Add retry button for manual reconnection attempts
+  - 🔄 Implement browser compatibility improvements
+    - 🔄 Add EventSource polyfill for older browsers
+    - 🔄 Test in major browsers (Chrome, Firefox, Safari, Edge)
+    - 🔄 Add fallback mechanism for browsers without SSE support
+    - 🔄 Create graceful degradation for limited browser environments
 
-### 3.5 Replicate AI Model Integration
+## 7. Testing & Deployment
 
-#### 3.5.1 Development Environment Setup
-- [x] Configure Replicate API access
-- [x] Implement basic API client
-- [x] Set up development model endpoint
-- [ ] Create test suite for model responses
-- [x] Implement request/response logging
-- [x] Add error handling for API failures
-- [x] Create response mocking for development
-- [ ] Document model interaction patterns
+### 7.1. Local Testing
+- **Details**:
+  - **Approach**: Implement a systematic testing strategy for component and end-to-end testing.
+  - **Current Status**: Ad-hoc testing in place, needs formalization.
+- **Tasks**:
+  - 🔄 Test SSE connection using browser debugging tools
+    - 🔄 Verify proper connection establishment
+    - 🔄 Test message receipt and processing
+    - 🔄 Check connection maintenance
+    - 🔄 Validate reconnection behavior
+  - 🔄 Verify audio processing with test recordings
+    - 🔄 Create test audio samples
+    - 🔄 Verify processing pipeline
+    - 🔄 Test different audio conditions
+    - 🔄 Validate noise handling
+  - 🔄 Check response latency and optimize if needed
+    - 🔄 Measure end-to-end response time
+    - 🔄 Identify bottlenecks
+    - 🔄 Implement optimizations
+    - 🔄 Create performance benchmarks
+  - 🔄 Test across different browsers and devices
+    - 🔄 Create browser compatibility matrix
+    - 🔄 Test on mobile devices
+    - 🔄 Verify tablet experience
+    - 🔄 Create browser-specific workarounds if needed
 
-#### 3.5.2 Ultravox Model Deployment (Replicate)
-- [x] Set up Replicate account and API access
-- [x] Install Cog CLI tools (`pip install cog`)
-- [x] Configure cog.yaml for Ultravox model
-- [x] Prepare model dependencies
-- [x] Set up model weights and configuration
-- [ ] Test model locally with Cog
-- [ ] Package model for Replicate deployment
-- [ ] Push model to Replicate (`cog push r8.im/username/ultravox-model`)
-- [ ] Test deployed model with sample inputs
-- [x] Configure model version in environment variables
-- [ ] Set up monitoring for model API health
-- [ ] Document model deployment process
+### 7.2. Shopify App Configuration
+- **File**: `/shopify.app.toml`
+- **Details**:
+  - **Current Status**: Basic configuration in place, needs verification for production.
+- **Tasks**:
+  - ✅ Configure correct App Proxy subpath and prefix
+    - ✅ Set proxy path for API endpoints
+    - ✅ Configure prefix for Shopify routing
+  - 🔄 Verify proxy URL points to production server
+    - 🔄 Update URL for production environment
+    - 🔄 Test proxy functionality
+    - 🔄 Verify cross-domain communication
+  - 🔄 Set up proper CORS configuration
+    - 🔄 Configure allowed origins
+    - 🔄 Set up method restrictions
+    - 🔄 Add proper header handling
+    - 🔄 Test CORS functionality
 
-#### 3.5.3 Request Processing (CURRENT FOCUS)
-- [x] Implement audio data preparation for model
-- [x] Add base64 encoding for audio data
-- [x] Set up proper request format for Ultravox model
-- [ ] Implement audio quality improvement preprocessing
-- [ ] Create user intent extraction logic
-- [ ] Set up context management for conversations
-- [ ] Implement prompt engineering for optimal results
-- [ ] Add response parsing and normalization
-- [x] Create fallback handling for API failures
-- [x] Implement retry logic for failed requests
-- [ ] Add response caching for common queries
-- [ ] Set up request batching if applicable
-- [x] Create detailed logging for request diagnostics
-- [x] Implement request timeout handling
+### 7.3. Production Deployment
+- **Details**:
+  - **Approach**: Create a robust deployment process with proper monitoring and failover.
+  - **Current Status**: Not started.
+- **Tasks**:
+  - ❌ Deploy updates to production environment
+    - ❌ Create deployment checklist
+    - ❌ Implement staged rollout
+    - ❌ Set up version control tagging
+    - ❌ Create rollback procedures
+  - ❌ Configure proper SSL certificates
+    - ❌ Generate and install SSL certificates
+    - ❌ Set up auto-renewal
+    - ❌ Configure secure headers
+    - ❌ Test SSL configuration
+  - ❌ Set up monitoring for connection issues
+    - ❌ Implement health check endpoints
+    - ❌ Create monitoring dashboard
+    - ❌ Set up alerts for critical issues
+    - ❌ Implement performance monitoring
+  - ❌ Implement logging for troubleshooting
+    - ❌ Create centralized logging
+    - ❌ Implement log rotation
+    - ❌ Add structured logging format
+    - ❌ Create log analysis tools
 
-#### 3.5.4 Response Handling and Action Determination
-- [x] Create response parsing functionality
-- [x] Implement basic action determination logic
-- [ ] Set up navigation intent processing
-- [ ] Create product search intent handling
-- [ ] Implement information request processing
-- [x] Add response formatting for display
-- [x] Create error handling for malformed responses
-- [ ] Implement confidence scoring for responses
-- [x] Add fallback responses for low confidence
-- [ ] Create response transformation for frontend display
-- [ ] Test with various model response scenarios
+## 8. Current Status and Next Steps
 
-### 3.6 Shopify Theme Extension Development
+### 8.1. Completed Tasks
+- ✅ Initial WebRTC audio integration 
+- ✅ Audio capture and processing in browser
+- ✅ Audio proxy server configuration
+- ✅ Basic Replicate API integration
+- ✅ Voice assistant UI components and visualization
+- ✅ CORS configuration for cross-origin requests
+- ✅ Basic participant tracking and session management
+- ✅ Audio parameter optimization for speech recognition
+- ✅ Visualization based on actual audio levels
+- ✅ SSE implementation for streaming responses
+- ✅ HTTP POST audio data transmission
+- ✅ Comprehensive error handling and retry logic
+- ✅ Chunked audio transmission with sequence tracking
 
-#### 3.6.1 Extension Configuration
-- [x] Initialize theme extension structure
-- [x] Configure extension settings in TOML file
-- [ ] Set up asset management for extension
-- [ ] Create extension localization
-- [ ] Configure extension metadata
-- [ ] Implement extension versioning
-- [ ] Add conditional loading mechanisms
-- [ ] Document extension configuration options
+### 8.2. In Progress (Prioritized)
+1. ✅ Converting WebSocket to SSE for response streaming
+   - ✅ Implemented SSE headers and connection handling
+   - ✅ Implemented client-side EventSource integration
+   - ✅ Added support for progressive response chunks
+   - 🔄 Need to test in various network conditions
 
-#### 3.6.2 Voice Assistant Button Component
-- [x] Create floating button component
-- [ ] Implement position customization (bottom-right, bottom-left)
-- [ ] Add color customization from settings
-- [ ] Create animation states (idle, listening, processing)
-- [ ] Implement accessibility attributes (ARIA)
-- [ ] Add keyboard navigation support
-- [ ] Create mobile-specific adaptations
-- [ ] Implement touch interaction handling
-- [ ] Add tooltip/introduction for first-time users
-- [ ] Create visual indicators for connection state
-- [ ] Test on various devices and screen sizes
+2. ✅ Implementing HTTP POST for audio data transmission
+   - ✅ Implemented complete POST endpoint
+   - ✅ Added chunking and sequence tracking
+   - ✅ Added retry logic and error handling
+   - ✅ Implemented request cancellation and timeouts
 
-#### 3.6.3 Audio Capture Implementation
-- [x] Implement microphone access request
-- [x] Create audio recording functionality
-- [ ] Implement audio visualization based on actual audio levels
-- [ ] Add dynamic visual feedback during recording
-- [ ] Create robust permission handling and error states with fallbacks
-- [ ] Use WebAudio's analyzers for real-time visualization
-- [ ] Add noise detection and notification
-- [ ] Implement recording timeout handling
-- [ ] Create fallback text input option
-- [ ] Add audio quality monitoring and feedback
-- [ ] Implement mic volume boost with GainNode
-- [ ] Implement proper media track cleanup on disconnect
-- [ ] Test on various browsers and devices
+3. 🔄 Enhancing error handling and recovery mechanisms
+   - ✅ Implemented standardized error codes and response format
+   - ✅ Created user-friendly error messages
+   - 🔄 Working on fallback mechanisms
+   - 🔄 Need to add more comprehensive recovery strategies
 
-#### 3.6.4 Information Window Component
-- [ ] Design expandable information window
-- [ ] Implement window positioning logic relative to button
-- [ ] Create content rendering components
-- [ ] Add support for text, images, and product displays
-- [ ] Implement scrolling for overflow content
-- [ ] Create animation states (appear, update, dismiss)
-- [ ] Add interaction handlers (links, buttons)
-- [ ] Implement dismissal logic
-- [ ] Create responsive design adaptations
-- [ ] Add keyboard navigation within the window
-- [ ] Implement screen reader compatibility
-- [ ] Test with various content types and lengths
+4. 🔄 Creating streaming response processing
+   - ✅ Implemented event-based response handling
+   - ✅ Set up progressive UI updates
+   - 🔄 Need to test streaming responses with real Ultravox API
 
-#### 3.6.5 Store Navigation Integration
-- [ ] Implement page navigation functionality
-- [ ] Create smooth transition effects
-- [ ] Add history state management
-- [ ] Implement navigation confirmation when needed
-- [ ] Create deep linking capabilities
-- [ ] Add parameter passing to destination pages
-- [ ] Implement scroll position management
-- [ ] Create fallbacks for failed navigation
-- [ ] Add analytics tracking for navigation events
-- [ ] Test on various page types and structures
+### 8.3. Next Critical Steps (Priority Order with Detailed Sub-tasks)
+1. **Update LiveKit Backend for SSE Support** (CRITICAL PRIORITY)
+   - Update `livekit-proxy.server.js` to properly support both WebSocket and HTTP POST
+   - Add HTTP handler for audio POST requests in the LiveKit proxy
+   - Implement session tracking for SSE connections
+   - Add support for audio chunk sequence numbers
+   - Create proper SSE response handling in the backend
+   - Update the Docker container to use the newest server version
+   - Test end-to-end communication with both approaches
+   - Ensure backward compatibility for existing clients
 
-### 3.7 Testing and Quality Assurance
+2. **Fix Frontend SSE Implementation Issues** (HIGHEST PRIORITY)
+   - Fix the EventSource URL format (should be `?stream=true&shop=` instead of `&shop=`)
+   - Update voice-assistant.js to reference sseEndpoint instead of wsEndpoint
+   - Fix duplicate 'open' event handler in connectSSE method
+   - Improve error handling for missing or undefined event.data
+   - Fix potential race condition between 'ready' and 'message' events
+   - Add exponential backoff for reconnection attempts
+   - Add proper progress indicators during connection attempts
+   - Fix browser compatibility issues with EventSource
+   - Implement polyfill for browsers that don't support EventSource
 
-#### 3.7.1 Unit Testing
-- [ ] Set up testing framework (Jest or equivalent)
-- [ ] Create test utilities and helpers
-- [ ] Implement tests for core utility functions
-- [ ] Add tests for API client functionality
-- [ ] Create component rendering tests
-- [ ] Implement state management tests
-- [ ] Add model response parsing tests
-- [ ] Create database operation tests
-- [ ] Implement WebSocket functionality tests
-- [ ] Set up continuous integration for tests
-- [ ] Generate test coverage reports
-- [ ] Document testing procedures
+3. **Test and Debug SSE Implementation** (HIGH PRIORITY)
+   - Test SSE connections in various browsers (Chrome, Firefox, Safari)
+   - Verify reconnection behavior with simulated network drops
+   - Monitor memory usage during long SSE connections
+   - Ensure proper cleanup of resources after disconnection
+   - Add logging for connection diagnostics
+   - Test audio chunk sequence handling
+   - Verify proper session ID tracking
 
-#### 3.7.2 Integration Testing
-- [ ] Create end-to-end test scenarios
-- [ ] Implement tests for authentication flow
-- [ ] Add tests for voice processing pipeline
-- [ ] Create tests for Shopify API integrations
-- [ ] Implement WebSocket communication tests
-- [ ] Add database operation sequence tests
-- [ ] Create user flow integration tests
-- [ ] Implement cross-browser testing
-- [ ] Add mobile device testing
-- [ ] Document integration test procedures
-- [ ] Create test environment setup guide
-
-#### 3.7.3 Performance Testing
-- [ ] Set up performance measurement tools
-- [ ] Create baseline performance metrics
-- [ ] Implement load testing for WebSocket server
-- [ ] Add response time measurement
-- [ ] Create memory usage monitoring
-- [ ] Implement CPU utilization tracking
-- [ ] Add network performance testing
-- [ ] Create concurrent user simulation
-- [ ] Implement threshold alerts for performance
-- [ ] Document performance testing results
-- [ ] Create performance optimization recommendations
-
-#### 3.7.4 User Acceptance Testing
-- [ ] Create test scenarios for merchants
-- [ ] Develop test cases for shoppers
-- [ ] Implement feedback collection mechanisms
-- [ ] Set up UAT environment
-- [ ] Create UAT documentation and guides
-- [ ] Conduct testing sessions
-- [ ] Collect and analyze feedback
-- [ ] Prioritize issues and enhancement requests
-- [ ] Implement critical fixes
-- [ ] Document UAT results and recommendations
-
-### 3.8 Deployment Preparation
-
-#### 3.8.1 Production Environment Configuration
-- [ ] Select hosting provider for app
-- [ ] Configure production database
-- [ ] Set up production WebSocket server
-- [ ] Create production environment variables
-- [ ] Implement SSL/TLS configuration
-- [ ] Set up domain and DNS settings
-- [ ] Configure firewall and security settings
-- [ ] Implement backup procedures
-- [ ] Create disaster recovery plan
-- [ ] Set up monitoring and alerting
-- [ ] Document production setup procedures
-
-#### 3.8.2 CI/CD Pipeline Implementation
-- [ ] Select CI/CD platform
-- [ ] Create build pipeline configuration
-- [ ] Implement testing in pipeline
-- [ ] Set up staging deployment
-- [ ] Configure production deployment
-- [ ] Implement rollback procedures
-- [ ] Add deployment notifications
-- [ ] Create deployment documentation
-- [ ] Set up version tagging process
-- [ ] Implement artifact storage
-- [ ] Test full CI/CD workflow
-
-#### 3.8.3 App Store Submission Preparation
-- [ ] Create app listing details
-- [ ] Prepare screenshots and demo video
-- [ ] Write comprehensive app description
-- [ ] Create feature list and highlights
-- [ ] Draft privacy policy
-- [ ] Create terms of service document
-- [ ] Implement required Shopify app review changes
-- [ ] Complete app review questionnaire
-- [ ] Prepare responses to common review questions
-- [ ] Create post-approval marketing plan
-- [ ] Document submission process and timeline
-
-## 4. Current Status and Next Steps
-
-### 4.1 Current Status (UPDATED)
-- ✅ Fixed LiveKit Proxy Server ES Module Compatibility
-  - Updated LiveKit proxy server to use proper ES module syntax
-  - Fixed WebSocket server implementation for audio streaming
-  - Resolved SSL/protocol issues with WebSocket connections (ws:// vs wss://)
-  - Added proper CORS headers for cross-origin requests
-  - Enhanced error handling and logging
-
-- ✅ Audio Processing Pipeline
-  - Implemented browser-based audio capture in theme extension
-  - Created audio chunking and buffering for optimal processing
-  - Set up WebSocket communication between frontend and backend
-  - Configured audio parameters for optimal speech recognition
-
-- ✅ Backend Infrastructure
-  - Configured Docker environment for LiveKit proxy
-  - Set up Shopify app proxy for handling requests
-  - Implemented Replicate API integration structure
-  - Added model version configuration and authentication
-
-### 4.2 Next Critical Steps (PRIORITY ORDER)
-
-1. **Complete Replicate/Ultravox Integration** (HIGH PRIORITY)
-   - Debug API communication with Replicate
-   - Verify proper audio format and preprocessing
-   - Implement streaming response handling
-   - Test end-to-end audio processing flow
-
-2. **Implement Tool Calling Framework**
+3. **Implement Tool Calling Framework** (HIGH PRIORITY)
    - Define JSON schema for product search tool
-   - Create UI display tools for showing products
-   - Connect to Shopify Storefront API for data
+   - Create display tool schema for showing results
+   - Implement navigation tool for page transitions
+   - Connect tools to Shopify Storefront API
+   - Create execution engine for tool calls
 
-3. **Add TTS Integration for Voice Response**
-   - Select appropriate TTS service
-   - Implement streaming audio playback
-   - Configure voice parameters
-   - Test voice response quality
+4. **Add Text-to-Speech** (MEDIUM PRIORITY)
+   - Research and select TTS approach (Web Speech API preferred)
+   - Implement speech synthesis wrapper
+   - Add voice selection and configuration
+   - Create playback controls (pause, resume, stop)
+   - Add visual indication during speech
+   - Implement fallback for unsupported browsers
 
-### 4.3 Local Development Guide
+5. **Production Preparation** (LOW PRIORITY)
+   - Create comprehensive testing plan
+   - Finalize error handling and recovery
+   - Set up monitoring and alerting
+   - Implement structured logging
+   - Test across all target browsers and devices
+   - Create deployment documentation and checklist
 
-#### Prerequisites
-- Node.js (v18.20+ or v20.10+)
-- Docker and Docker Compose
-- Shopify CLI
-- Shopify Partner account with development store
-- GitHub account (for Replicate deployment)
-- Replicate account with API access
+## 9. Data Flow Summary (Revised Architecture)
 
-#### Initial Setup
+1. **Voice Capture**:
+   - Browser captures audio via WebRTC getUserMedia API
+   - Audio is processed for optimal quality (noise reduction, etc.)
+   - Audio chunks are encoded as base64
 
-1. Clone the repository:
-```bash
-git clone [repository-url]
-cd voice-ai-assistant
-```
+2. **Data Transmission**:
+   - Client establishes SSE connection via `/apps/voice?stream=true&shop=[shop_domain]`
+   - Server assigns a unique session ID for the connection
+   - Audio chunks sent via HTTP POST to `/apps/voice` with session ID and request ID
+   - Each chunk includes sequence number for tracking
+   - Server buffers and forwards audio to backend for processing
 
-2. Install dependencies:
-```bash
-npm install
-```
+3. **Processing**:
+   - Server accumulates audio chunks until sufficient for processing
+   - Buffered audio sent to Replicate API (Ultravox model)
+   - AI processes audio and generates progressive response
+   - Response may include tool calls (product search, navigation)
+   - Tool calls executed as they arrive (asynchronously)
 
-3. Configure environment variables:
-   - Copy `.env.example` to `.env`
-   - Fill in all required values for local development
+4. **Response Delivery**:
+   - Server streams response via SSE events to client in real-time
+   - Different event types used for different response parts:
+     - 'message' for status updates
+     - 'result' for assistant responses
+     - 'error' for error messages
+     - 'heartbeat' to keep connection alive
+   - Client receives and processes event stream
+   - UI updates progressively as response chunks arrive
+   - Text-to-speech plays audio response if enabled
+   - Navigation or search actions executed based on tool calls
 
-4. Set up the database:
-```bash
-npm run setup
-```
+## 10. Build Log
 
-5. Start the LiveKit proxy server:
-```bash
-npm run start:livekit-proxy:docker
-```
+### 2025-03-22
+- Reviewed SSE implementation and identified frontend and backend issues
+- Found Docker LiveKit container is missing HTTP POST and SSE support
+- Discovered backend lacks support for session ID and chunk sequence numbers
+- Added critical backend update tasks to implementation plan
+- Added detailed error handling improvement tasks for frontend
+- Discovered URL formatting issues in SSE connection logic
+- Identified potential race conditions in event handling
+- Created comprehensive frontend error handling subplan
+- Prioritized backend and frontend fixes as critical priorities
 
-6. Start the development server:
-```bash
-npm run dev
-```
+### 2025-03-21
+- Completed initial SSE implementation for streaming responses
+- Replaced WebSocket audio sending with HTTP POST
+- Implemented proper event typing for SSE messages
+- Added timeout logic and request cancellation
+- Implemented chunked audio transmission with sequence tracking
+- Added initial error handling mechanisms
+- Updated implementation plan to reflect completed tasks
 
-### 4.4 Ultravox Model Deployment (Development)
+### 2025-03-20
+- Updated implementation plan with detailed subtasks
+- Reorganized priority tasks based on current progress
+- Added detailed technical approaches for each component
+- Created comprehensive subtask breakdowns for error handling
+- Updated status indicators for all tasks
 
-1. Navigate to the ultravox-backend directory:
-```bash
-cd ultravox-backend
-```
-
-2. Install Cog:
-```bash
-pip install cog
-```
-
-3. Test the model locally:
-```bash
-cog predict -i command="Show me products" -i audio="[base64-audio]"
-```
-
-4. Deploy to Replicate:
-```bash
-cog push r8.im/your-username/voice-assistant
-```
-
-5. Update the ULTRAVOX_MODEL_VERSION in your .env file with the new version ID.
-
-### 4.5 Development Workflow
-
-1. Make changes to the code
-2. Test changes locally using the development server
-3. Run tests to ensure functionality
-4. Commit changes with descriptive commit messages
-5. Push changes to the repository
-6. Deploy to staging environment for testing
-7. Deploy to production when ready
-
-### 4.6 Troubleshooting
-
-#### Common Issues and Solutions
-
-- **LiveKit Connection Issues**: 
-  - Check Docker container is running: `docker ps`
-  - Verify WebSocket URL is correct in .env and explicitly uses ws:// protocol, not wss://
-  - Check browser console for connection errors
-  - Ensure CORS headers are properly set in proxy routes
-  - Verify proper WebSocket connection in browser (check Network tab)
-  - For SSL errors, ensure you're using the correct WebSocket protocol (ws:// for non-SSL)
-
-- **Microphone Access Problems**:
-  - Ensure site is using HTTPS or localhost
-  - Check browser permissions
-  - Verify proper error handling in code
-
-- **Replicate API Issues**:
-  - Verify API token is correct
-  - Check rate limits
-  - Ensure model version is available
-
-- **Shopify App Connection Problems**:
-  - Verify API credentials
-  - Check Shopify App Bridge configuration
-  - Confirm app URL is correctly set in Shopify Partner Dashboard
+### 2025-03-19
+- Fixed ES module compatibility issues in LiveKit proxy
+- Implemented audio buffer management for optimal processing
+- Updated proxy route handler with better error handling
+- Added CORS support for cross-origin requests
+- Improved participant tracking in WebSocket connections

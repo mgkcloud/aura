@@ -3,7 +3,7 @@
 client_id = "bf4c779259de11e69362150ed70a9533"
 name = "feisty-voice-studio"
 handle = "feisty-voice-studio"
-application_url = "https://brazil-state-yen-easy.trycloudflare.com"
+application_url = "https://combining-absolute-diesel-prints.trycloudflare.com"
 embedded = true
 
 [build]
@@ -17,9 +17,9 @@ scopes = "write_products,read_product_listings,read_customers,read_content"
 
 [auth]
 redirect_urls = [
-  "https://brazil-state-yen-easy.trycloudflare.com/auth/callback",
-  "https://brazil-state-yen-easy.trycloudflare.com/auth/shopify/callback",
-  "https://brazil-state-yen-easy.trycloudflare.com/api/auth/callback"
+  "https://combining-absolute-diesel-prints.trycloudflare.com/auth/callback",
+  "https://combining-absolute-diesel-prints.trycloudflare.com/auth/shopify/callback",
+  "https://combining-absolute-diesel-prints.trycloudflare.com/api/auth/callback"
 ]
 
 [webhooks]
@@ -45,6 +45,6 @@ ULTRAVOX_MODEL_VERSION = "__PLACEHOLDER__"
 embedded = false
 
 [app_proxy]
-url = "https://brazil-state-yen-easy.trycloudflare.com/proxy"
+url = "https://combining-absolute-diesel-prints.trycloudflare.com/proxy"
 prefix = "apps"
 subpath = "voice"
