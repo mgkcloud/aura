@@ -76,6 +76,10 @@ The Voice AI Shopping Assistant is built on a modern, scalable architecture that
 └───────────────────────────────────────────────────────────────────────────┘
 ```
 
+**Diagram Description:**
+
+The diagram illustrates the flow: The Shopper interacts with the Voice UI in the Theme App Extension. For voice input, the frontend requests an access token from the Shopify App Backend. Using this token, it establishes a **direct WebSocket/WebRTC connection** to the LiveKit Server for real-time audio streaming. The LiveKit server can then interact with backend services (like a processing service connecting to Replicate) or directly handle TTS. The Shopify App Backend handles configuration, standard API interactions (possibly via App Proxy), and tool execution logic triggered by assistant responses.
+
 ## Component Descriptions
 
 ### 1. Shopify Integration Components
@@ -86,28 +90,35 @@ The Voice AI Shopping Assistant is built on a modern, scalable architecture that
 - **Technologies**: React, Remix, Shopify App Bridge, Polaris UI components
 
 #### 1.2 Theme App Extension
-- **Voice UI Components**: Frontend interface that shoppers interact with
-- **Assistant Logic**: Client-side JavaScript that handles voice capture, visualization, and UI interactions
-- **Purpose**: Embeds the voice assistant into the merchant's storefront
-- **Technologies**: JavaScript, WebSockets, WebAudio API
+- **Voice UI Components**: Frontend interface that shoppers interact with.
+- **Assistant Logic**: Client-side JavaScript that handles voice capture (WebAudio API), requests LiveKit tokens from the backend, establishes direct connection to LiveKit Server using the LiveKit Client SDK, publishes audio tracks, subscribes to remote tracks (e.g., TTS response), and manages UI interactions.
+- **Purpose**: Embeds the voice assistant into the merchant's storefront and handles real-time communication via LiveKit.
+- **Technologies**: JavaScript, LiveKit Client SDK, WebAudio API, Fetch API (for token).
 
 ### 2. Voice AI Assistant Platform
 
 #### 2.1 Shopify App Backend
-- **Configuration Storage**: Database to store merchant-specific settings
-- **Tool Execution Engine**: Processes tool calls from the Ultravox model to perform actions like product search or UI display
-- **Response Processor**: Handles the text responses and prepares them for TTS
-- **Technologies**: Node.js, Remix.js, Prisma ORM
+- **Configuration Storage**: Database to store merchant-specific settings.
+- **LiveKit Token Service**: Endpoint (e.g., `/api/livekit/token`) that generates LiveKit access tokens (JWTs) upon authenticated request from the frontend.
+- **Tool Execution Engine**: Processes tool calls from the Ultravox model (potentially received via LiveKit webhook or a dedicated processing service) to perform actions like product search or UI display.
+- **Response Processor**: Handles the text responses and prepares them for TTS (potentially triggering TTS via LiveKit Server API).
+- **Technologies**: Node.js, Remix.js, Prisma ORM, LiveKit Server SDK (for token generation).
 
-#### 2.2 LiveKit Proxy Server
-- **Audio Processor**: WebSocket server that buffers audio chunks and forwards them to Replicate
-- **Purpose**: Handles real-time audio streaming between the frontend and Replicate
-- **Technologies**: Node.js, WebSockets, Docker container
+#### 2.2 LiveKit Server (Self-hosted or Cloud)
+- **Signaling Server**: Manages WebSocket connections for room management, participant signaling, and track publishing/subscription.
+- **Media Server (WebRTC)**: Handles the efficient transport of real-time audio/video streams between participants.
+- **API/Webhooks**: Provides APIs for server-side control (e.g., generating tokens, sending data messages, Egress/Ingress) and webhooks for events (e.g., participant join/leave, track published).
+- **Purpose**: Provides the core real-time communication infrastructure.
+- **Technologies**: LiveKit Media Server, Go, WebRTC, WebSockets.
 
-#### 2.3 TTS Service
-- **Voice Synthesis**: Converts text responses from Ultravox into speech
-- **Purpose**: Creates natural voice responses for the assistant
-- **Technologies**: LiveKit integration with TTS service (e.g., Rime)
+#### 2.3 Optional: Audio Processing Service (if separate from Backend)
+- **Purpose**: Connects to LiveKit as a participant (e.g., a bot) to receive audio tracks, forwards them to Replicate/Ultravox, receives results, and potentially initiates TTS or sends results back via LiveKit data messages or API calls to the main backend.
+- **Technologies**: Node.js (or other), LiveKit Server SDK, Replicate API client.
+
+#### 2.4 TTS Service
+- **Voice Synthesis**: Converts text responses into speech.
+- **Purpose**: Creates natural voice responses for the assistant.
+- **Integration**: Can be integrated via LiveKit Server API (e.g., triggering synthesis and playing back into the room) or handled by the client subscribing to text messages and performing client-side TTS.
 
 ### 3. Replicate Platform
 
@@ -120,14 +131,19 @@ The Voice AI Shopping Assistant is built on a modern, scalable architecture that
 ## Data Flow
 
 ### Voice Query Flow
-1. Shopper activates the voice assistant in the storefront (Theme App Extension)
-2. Frontend captures audio via WebAudio API and streams it through WebSockets
-3. LiveKit Proxy receives audio chunks, buffers them, and forwards to Replicate
-4. Ultravox model on Replicate processes audio and returns text with tool calling information
-5. Backend executes tool calls (product search, UI display, navigation)
-6. Text response is sent to TTS service for voice synthesis
-7. Audio response is streamed back to the frontend
-8. Frontend plays the audio response and updates UI based on tool actions
+1.  Shopper activates the voice assistant in the storefront (Theme App Extension).
+2.  Frontend requests a LiveKit access token from the Shopify App Backend (e.g., via fetch to `/api/livekit/token`).
+3.  Backend generates and returns the token and LiveKit server URL.
+4.  Frontend uses LiveKit Client SDK to connect directly to the LiveKit Server (WebSocket/WebRTC).
+5.  Frontend captures audio (WebAudio API) and publishes it as a track to the LiveKit room.
+6.  A server-side component (either the main Backend reacting to webhooks/API, or a dedicated Audio Processing Service connected as a participant) receives the audio track.
+7.  The server-side component forwards the audio to the Replicate/Ultravox model.
+8.  Ultravox processes audio and returns text/tool calls to the server-side component.
+9.  Server-side component processes the response:
+    *   If tool call: Instructs the main Backend to execute the tool.
+    *   If text response: Sends text to TTS Service (e.g., via LiveKit API).
+10. TTS service generates audio and plays it back into the LiveKit room (or sends audio data back to the client).
+11. Frontend receives the audio track (or text/data message) via its LiveKit connection and plays the audio response / updates UI.
 
 ### Tool Calling Flow
 1. Ultravox identifies a tool action from the user's query (e.g., "Show me red shirts")
@@ -139,30 +155,28 @@ The Voice AI Shopping Assistant is built on a modern, scalable architecture that
 ## Technical Considerations
 
 ### Security
-- All API communications use HTTPS/TLS encryption
-- WebSocket connections secured with proper authentication
-- Voice data is processed but not persistently stored
-- GDPR/CCPA compliance built into data handling
+- All API communications use HTTPS/TLS encryption.
+- **LiveKit connections secured via JWT tokens generated by the backend.**
+- WebSocket/WebRTC connections use standard security mechanisms (WSS, DTLS-SRTP).
+- Voice data is processed but not persistently stored (unless required and compliant).
+- GDPR/CCPA compliance built into data handling.
 
 ### Performance
-- Binary WebSocket data for reduced latency
-- Audio buffering optimized for speech recognition
-- Progressive processing for faster response times
-- Streaming audio playback for immediate feedback
+- **Direct WebRTC connection for low-latency audio streaming via LiveKit.**
+- Audio buffering handled by LiveKit and potentially optimized on the server-side before sending to Replicate.
+- Streaming audio playback via LiveKit.
 
 ### Scalability
-- Docker containerization for LiveKit proxy
-- Stateless design to support horizontal scaling
-- Efficient resource usage with proper cleanup
-- Rate limiting to prevent API abuse
+- **LiveKit server designed for horizontal scalability.**
+- Stateless design for the Remix backend token endpoint and potentially the audio processing service.
+- Docker containerization for deployment.
 
 ## Implementation Details
 
-### LiveKit Proxy Server
-- ES Module-based Node.js implementation
-- WebSocket server for audio streaming
-- Audio buffer management for optimal chunks
-- Error handling and reconnection logic
+### LiveKit Integration
+- **Client-side:** Use `livekit-client` SDK for connection, track publishing/subscription.
+- **Backend:** Use `livekit-server-sdk` (Node.js) for token generation and potentially API interactions/webhook handling.
+- **Audio Processing Service (Optional):** Use `livekit-server-sdk` or `livekit-client` (as a bot participant) to interact with rooms and tracks.
 
 ### Replicate Integration
 - Streaming API for real-time responses

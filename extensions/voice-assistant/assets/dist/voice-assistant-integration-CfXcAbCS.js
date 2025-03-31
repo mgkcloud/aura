@@ -21,7 +21,7 @@ const {
 } = LivekitClient;
 
 // First, let's implement the LiveKitAudioClient
-export class LiveKitAudioClient {
+class LiveKitAudioClient {
   constructor(audioConfig = {}) {
     this.audioConfig = {
       noiseSuppression: true,
@@ -134,10 +134,7 @@ export class LiveKitAudioClient {
       for (let i = 0; i < this.volumeDataArray.length; i++) {
         sum += this.volumeDataArray[i];
       }
-      const average = sum / this.volumeDataArray.length;
-      
-      // Normalize to 0-1 range (for volume level)
-      const normalizedVolume = Math.min(average / 128, 1);
+      sum / this.volumeDataArray.length;
       
       // Prepare frequency data for visualization (resize to match expected format)
       // This ensures compatibility with the existing visualizer
@@ -281,7 +278,7 @@ export class LiveKitAudioClient {
  * 
  * Main integration class that connects LiveKit audio to the voice assistant
  */
-export class VoiceAssistantIntegration {
+class VoiceAssistantIntegration {
   constructor(shopDomain, audioConfig) {
     this.shopDomain = shopDomain;
     
@@ -1104,3 +1101,5 @@ if (typeof window !== 'undefined') {
   window.VoiceAssistantIntegration = VoiceAssistantIntegration;
   window.LiveKitAudioClient = LiveKitAudioClient;
 }
+
+export { LiveKitAudioClient, VoiceAssistantIntegration };

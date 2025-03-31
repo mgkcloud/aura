@@ -1,0 +1,10 @@
+{
+  "name": "Voice Assistant",
+  "description": "Adds a voice assistant widget to the storefront.",
+  "settings": {
+    "enabled": {
+      "label": "Enable Voice Assistant",
+      "info": "Toggle the voice assistant widget on/off."
+    }
+  }
+}

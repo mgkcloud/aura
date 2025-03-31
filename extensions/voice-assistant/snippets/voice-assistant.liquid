@@ -1,8 +1,9 @@
-{% if block.settings.enabled %}
+{% comment %} Use the explicitly passed settings object {% endcomment %}
+{% if block_settings.enabled %}
   <div id="voice-assistant" 
        data-shop-domain="{{ shop.domain }}"
-       data-position="{{ block.settings.position }}"
-       data-color="{{ block.settings.assistant_color }}">
+       data-position="{{ block_settings.position }}"
+       data-color="{{ block_settings.assistant_color }}">
     <!-- Visualizer Container -->
     <div class="voice-assistant-visualizer-container">
       <!-- Visualizer Canvas -->
@@ -52,7 +53,7 @@
   </div>
   <link rel="stylesheet" href="{{ 'voice-assistant.css' | asset_url }}">
   <!-- Load integration first so classes are available -->
-  <script src="{{ 'voice-assistant-integration.js' | asset_url }}"></script>
+  <script src="{{ 'voice-assistant-integration.js' | asset_url }}" type="module"></script>
   <!-- Load main script after integration is ready -->
-  <script src="{{ 'voice-assistant.js' | asset_url }}"></script>
+  <script src="{{ 'voice-assistant.js' | asset_url }}" type="module"></script>
 {% endif %}

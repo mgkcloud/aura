@@ -11,7 +11,7 @@ services:
       - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}
       - ULTRAVOX_MODEL_VERSION=${ULTRAVOX_MODEL_VERSION}
       - NODE_ENV=production
-      - LIVEKIT_URL=ws://livekit-proxy:7880
+      - LIVEKIT_PROXY_URL=http://livekit-proxy:7880
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:7880/health"]

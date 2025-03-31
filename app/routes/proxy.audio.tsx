@@ -1,6 +1,5 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
-import WebSocket from 'ws';
 
 /**
  * App Proxy endpoint for processing voice assistant audio
@@ -154,129 +153,75 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     // Process the audio data using LiveKit proxy
-    return await new Promise((resolve, reject) => {
-      try {
-        console.log('Processing audio via LiveKit');
-        // Important: Always use ws:// protocol for WebSockets in development/Docker
-        // In production, this should be configured properly with wss:// if behind SSL
-        let livekitUrl = process.env.LIVEKIT_URL || "ws://localhost:7880";
-        
-        // Force ws:// protocol if running locally or in Docker (not in production)
-        if (livekitUrl.startsWith('wss://') && (
-            livekitUrl.includes('localhost') || 
-            livekitUrl.includes('127.0.0.1')
-        )) {
-          livekitUrl = livekitUrl.replace('wss://', 'ws://');
-        }
-        
-        console.log(`Connecting to LiveKit at: ${livekitUrl}`);
-        console.log(`Audio data length: ${audio ? audio.length : 0} characters`);
-      let ws;
-      try {
-        ws = new WebSocket(livekitUrl);
-      } catch (wsError) {
-        console.error('Error creating WebSocket:', wsError);
-        return resolve(json({ 
-          error: 'LiveKit connection error',
-          message: 'Failed to create WebSocket connection to audio processing server.'
-        }, { 
-          status: 500,
-          headers: responseHeaders 
-        }));
-      }
-      
-      const currentRequestId = requestId || Date.now().toString();
-      
-      const timeout = setTimeout(() => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.close();
-        }
-        
-        // If we timed out waiting for LiveKit, provide a direct response
-        // This allows bypassing LiveKit for testing
-        const fallbackResponse = {
-          message: "I'm sorry, but the voice service is taking too long to respond. How can I help you today?",
-          action: "none"
-        };
-        
-        console.log('Returning fallback response due to timeout:', fallbackResponse);
-        resolve(json(fallbackResponse, { 
-          status: 200, // Return as success with fallback content
-          headers: responseHeaders 
-        }));
-      }, 15000);
-      
-      ws.on('open', () => {
-        console.log('LiveKit connection opened');
-        // Initialize the connection
-        ws.send(JSON.stringify({
-          type: 'init',
-          participantId: `app-proxy-${shop}-${Date.now()}`,
-          shopId: shop
-        }));
-        
-        // Send the audio data
-        ws.send(JSON.stringify({
-          type: 'audio',
-          data: audio,
+    console.log('Processing audio via LiveKit Proxy (HTTP POST)');
+    const livekitProxyUrl = process.env.LIVEKIT_PROXY_URL || "http://localhost:7880"; // Use HTTP URL
+    const currentRequestId = requestId || `audio-req-${Date.now()}`;
+
+    console.log(`Sending POST request to LiveKit Proxy at: ${livekitProxyUrl}`);
+    console.log(`Audio data length: ${audio ? audio.length : 0} characters`);
+    
+    try {
+      const proxyResponse = await fetch(livekitProxyUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Shopify-Shop-Domain': shop,
+          'X-Request-ID': currentRequestId,
+          // Add other relevant headers if needed (e.g., X-Session-ID if available)
+        },
+        body: JSON.stringify({
+          audio: audio,
+          shopId: shop,
           requestId: currentRequestId
-        }));
+          // Add sessionId if available in body
+        }),
+        // Add a timeout for the fetch request if desired
+        // signal: AbortSignal.timeout(15000) // Example: 15 second timeout
       });
-      
-      ws.on('message', (message) => {
-        try {
-          const data = JSON.parse(message.toString());
-          
-          if (data.type === 'init_ack') {
-            // Connection initialized, waiting for results
-          } else if (data.type === 'result' && data.requestId === currentRequestId) {
-            clearTimeout(timeout);
-            ws.close();
-            resolve(json(data.result, { 
-              headers: responseHeaders
-            }));
-          } else if (data.type === 'error' && data.requestId === currentRequestId) {
-            clearTimeout(timeout);
-            ws.close();
-            resolve(json({ 
-              error: data.error,
-              message: 'Sorry, there was an error processing your request.'
-            }, { 
-              status: 500,
-              headers: responseHeaders 
-            }));
-          }
-        } catch (error) {
-          console.error('Error parsing LiveKit message:', error);
-        }
-      });
-      
-      ws.on('error', (error) => {
-        console.error('LiveKit connection error:', error);
-        clearTimeout(timeout);
-        resolve(json({ 
-          error: 'LiveKit connection error',
-          message: 'Sorry, there was a problem connecting to the voice service.'
+
+      if (!proxyResponse.ok) {
+        const errorText = await proxyResponse.text();
+        console.error(`Error response from LiveKit Proxy: ${proxyResponse.status} - ${errorText}`);
+        return json({ 
+          error: 'Error communicating with voice service',
+          message: `Proxy returned status ${proxyResponse.status}` 
         }, { 
-          status: 500,
+          status: 502, 
           headers: responseHeaders 
-        }));
-      });
-      
-      ws.on('close', () => {
-        clearTimeout(timeout);
-      });
-      } catch (unexpectedError) {
-        console.error('Unexpected error during WebSocket setup:', unexpectedError);
-        resolve(json({ 
-          error: 'Unexpected error',
-          message: 'An unexpected error occurred while setting up the audio connection.'
-        }, { 
-          status: 500,
-          headers: responseHeaders 
-        }));
+        });
       }
-    });
+
+      console.log(`LiveKit Proxy responded with status: ${proxyResponse.status}`);
+      const responseBody = await proxyResponse.json(); 
+      
+      // Return the acknowledgement from the proxy
+      return json({ 
+        status: 'processing', 
+        message: 'Audio received by proxy, processing...',
+        proxyResponse: responseBody 
+      }, { 
+        status: 202, // Accepted
+        headers: responseHeaders 
+      });
+
+    } catch (fetchError) {
+      // Type check for the caught error
+      let errorMessage = 'An unknown error occurred while connecting to the voice service.';
+      if (fetchError instanceof Error) {
+        errorMessage = fetchError.message;
+      } else if (typeof fetchError === 'string') {
+        errorMessage = fetchError;
+      }
+      console.error('Error sending POST request to LiveKit Proxy:', fetchError); 
+      return json({ 
+        error: 'Failed to connect to voice service',
+        message: errorMessage 
+      }, { 
+        status: 503, // Service Unavailable
+        headers: responseHeaders 
+      });
+    }
   } catch (error) {
     console.error('Error processing audio data:', error);
     console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');

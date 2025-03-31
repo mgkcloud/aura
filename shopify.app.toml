@@ -3,24 +3,13 @@
 client_id = "bf4c779259de11e69362150ed70a9533"
 name = "feisty-voice-studio"
 handle = "feisty-voice-studio"
-application_url = "https://combining-absolute-diesel-prints.trycloudflare.com"
+application_url = "https://aura.fy.studio"
 embedded = true
 
 [build]
-automatically_update_urls_on_dev = true
+automatically_update_urls_on_dev = false
 dev_store_url = "feistyagency.myshopify.com"
 include_config_on_deploy = true
-
-[access_scopes]
-# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products,read_product_listings,read_customers,read_content"
-
-[auth]
-redirect_urls = [
-  "https://combining-absolute-diesel-prints.trycloudflare.com/auth/callback",
-  "https://combining-absolute-diesel-prints.trycloudflare.com/auth/shopify/callback",
-  "https://combining-absolute-diesel-prints.trycloudflare.com/api/auth/callback"
-]
 
 [webhooks]
 api_version = "2025-01"
@@ -33,18 +22,21 @@ api_version = "2025-01"
   topics = [ "app/uninstalled" ]
   uri = "/webhooks/app/uninstalled"
 
-[app_env.production]
-REPLICATE_API_TOKEN = "__PLACEHOLDER__"
-ULTRAVOX_MODEL_VERSION = "__PLACEHOLDER__"
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_content,read_customers,read_product_listings,write_products"
 
-[app_env.development]
-REPLICATE_API_TOKEN = "__PLACEHOLDER__"
-ULTRAVOX_MODEL_VERSION = "__PLACEHOLDER__"
+[auth]
+redirect_urls = [
+  "https://aura.fy.studio/auth/callback",
+  "https://aura.fy.studio/auth/shopify/callback",
+  "https://aura.fy.studio/api/auth/callback"
+]
+
+[app_proxy]
+url = "https://aura.fy.studio"
+subpath = "voice"
+prefix = "apps"
 
 [pos]
 embedded = false
-
-[app_proxy]
-url = "https://combining-absolute-diesel-prints.trycloudflare.com/proxy"
-prefix = "apps"
-subpath = "voice"

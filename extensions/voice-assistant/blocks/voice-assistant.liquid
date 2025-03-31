@@ -3,7 +3,7 @@
   "name": "Voice AI Assistant",
   "target": "body",
   "stylesheet": "voice-assistant.css",
-  "javascript": "voice-assistant.js",
+  "javascript": "loader.js",
   "settings": [
     {
       "type": "checkbox",
@@ -37,4 +37,14 @@
 }
 {% endschema %}
 
-{% render 'voice-assistant' %}
+<script>
+  // Store the full bundle URL in a global variable
+  window.voiceAssistantBundleUrl = "{{ 'bundle.js' | asset_url }}";
+</script>
+
+{% comment %} Render the main UI snippet {% endcomment %}
+{% render 'voice-assistant', block_settings: block.settings %}
+
+{% comment %}
+  REMOVED Manual Script Loading Block
+{% endcomment %}

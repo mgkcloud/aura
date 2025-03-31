@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "build": "remix vite:build",
+    "build:assets": "rollup -c",
     "dev": "shopify app dev",
     "config:link": "shopify app config link",
     "generate": "shopify app generate",
@@ -20,6 +21,8 @@
     "start:livekit-proxy": "node scripts/start-livekit-proxy.js",
     "start:livekit-proxy:screen": "screen -dmS livekit-proxy node scripts/start-livekit-proxy.js",
     "start:livekit-proxy:docker": "docker-compose up -d livekit-proxy",
+    "test:livekit-connection": "node scripts/test-livekit-connection.js",
+    "setup:voice-assistant": "npm run start:livekit-proxy && npm run test:livekit-connection",
     "deploy:replicate": "./scripts/deploy-replicate.sh"
   },
   "type": "module",
@@ -27,6 +30,9 @@
     "node": "^18.20 || ^20.10 || >=21.0.0"
   },
   "dependencies": {
+    "@livekit/components-react": "^2.8.1",
+    "@livekit/components-styles": "^1.1.4",
+    "@livekit/krisp-noise-filter": "^0.2.16",
     "@prisma/client": "^6.2.1",
     "@remix-run/dev": "^2.15.0",
     "@remix-run/fs-routes": "^2.15.0",
@@ -34,16 +40,13 @@
     "@remix-run/react": "^2.15.0",
     "@remix-run/serve": "^2.15.0",
     "@shopify/app-bridge-react": "^4.1.6",
-    "@shopify/cli": "3.63.2",
     "@shopify/polaris": "^12.0.0",
     "@shopify/polaris-icons": "^9.3.0",
     "@shopify/shopify-app-remix": "^3.7.0",
     "@shopify/shopify-app-session-storage-prisma": "^6.0.0",
-    "@livekit/components-react": "^2.8.1",
-    "@livekit/components-styles": "^1.1.4", 
-    "@livekit/krisp-noise-filter": "^0.2.16",
     "isbot": "^5.1.0",
     "livekit-client": "^2.9.7",
+    "livekit-server-sdk": "^2.10.2",
     "node-fetch": "^3.3.2",
     "prisma": "^6.2.1",
     "react": "^18.2.0",
@@ -54,6 +57,8 @@
   "devDependencies": {
     "@remix-run/eslint-config": "^2.15.0",
     "@remix-run/route-config": "^2.15.0",
+    "@rollup/plugin-commonjs": "^28.0.3",
+    "@rollup/plugin-node-resolve": "^16.0.1",
     "@shopify/api-codegen-preset": "^1.1.1",
     "@types/eslint": "^9.6.1",
     "@types/node": "^22.2.0",
@@ -62,6 +67,7 @@
     "eslint": "^8.42.0",
     "eslint-config-prettier": "^10.0.1",
     "prettier": "^3.2.4",
+    "rollup": "^4.38.0",
     "typescript": "^5.2.2",
     "vite": "^5.1.3"
   },

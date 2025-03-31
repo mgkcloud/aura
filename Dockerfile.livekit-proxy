@@ -6,7 +6,7 @@ WORKDIR /app
 COPY app/livekit-proxy.server.js app/server.js ./
 
 # Create a proper package.json with type:module
-RUN echo '{"name":"livekit-proxy","private":true,"type":"module","dependencies":{"ws":"^8.18.1","node-fetch":"^3.3.2"},"engines":{"node":">=18.0.0"}}' > package.json
+RUN echo '{"name":"livekit-proxy","private":true,"type":"module","dependencies":{"node-fetch":"^3.3.2"},"engines":{"node":">=18.0.0"}}' > package.json
 
 # Install dependencies (with production flag to minimize image size)
 RUN npm install --production=true

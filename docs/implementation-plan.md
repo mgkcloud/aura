@@ -26,10 +26,7 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
 ### 2.1. Update Proxy Route Handler
 - **File**: `/app/routes/proxy.tsx`
 - **Tasks**:
-  - ✅ Implement WebSocket connection handling
-    - ✅ Configure WebSocket connection setup
-    - ✅ Add message parsing and routing
-    - ✅ Implement participant tracking
+  - ~~Implement WebSocket connection handling~~ (REMOVED - Migrated to HTTP/SSE)
   - 🔄 Convert to HTTP POST endpoint for audio data submission
     - ✅ Set up POST handler for audio chunks
     - ✅ Add support for base64 encoded audio
@@ -42,9 +39,9 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
   - ✅ Set up proper CORS headers for cross-origin requests
     - ✅ Add CORS headers to all responses
     - ✅ Support OPTIONS preflight requests
-  - ✅ Add participant tracking and session management
-    - ✅ Generate unique participant IDs
-    - ✅ Store session data with shop information
+    - ✅ Add participant tracking and session management
+      - ✅ Generate unique participant IDs
+      - ✅ Store session data with shop information
 
 ### 2.2. Configure Audio Processing Server
 - **File**: `/app/livekit-proxy.server.js`
@@ -63,25 +60,19 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
     - ✅ Add timeout handling
     - ✅ Implement reconnection logic
   - ✅ Ensure proper cleanup of resources when connections close
-    - ✅ Clean up WebSocket connections
+    - ~~Clean up WebSocket connections~~ (REMOVED)
     - ✅ Release audio resources
   - 🔄 Implement streaming responses via SSE
     - 🔄 Convert chunked responses to SSE format
     - 🔄 Add event typing for different message types
     - 🔄 Implement progressive response handling
 
-### 2.3. Add WebSocket Support Route
-- **File**: `/app/routes/proxy.ws.tsx`
-- **Tasks**:
-  - ✅ Create dedicated WebSocket route
-    - ✅ Set up loader function for WebSocket connections
-    - ✅ Configure proper headers
-  - 🔄 Implement connection upgrade handling
-    - 🔄 Detect WebSocket connection requests
-    - 🔄 Add support for connection parameters
-  - 🔄 Add error handling for connection failures
-    - 🔄 Implement proper error responses
-    - 🔄 Add logging for connection issues
+~~### 2.3. Add WebSocket Support Route~~ (REMOVED - File deleted)
+~~- **File**: `/app/routes/proxy.ws.tsx`~~
+~~- **Tasks**:~~
+  ~~- Create dedicated WebSocket route~~
+  ~~- Implement connection upgrade handling~~
+  ~~- Add error handling for connection failures~~
 
 ## 3. Client-Side Implementation
 
@@ -185,7 +176,7 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
     - ✅ Add model version variable
     - ✅ Document version update process
   - ✅ Set up URLs and other connection parameters
-    - ✅ Configure LiveKit URLs
+    - ✅ Configure LiveKit URLs (Now `LIVEKIT_PROXY_URL`)
     - ✅ Set API endpoints
     - ✅ Add timeout settings
 
@@ -231,7 +222,7 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
 ## 6. MVP Features to Implement
 
 ### 6.1. SSE Implementation (HIGHEST PRIORITY)
-- **Files**: `/app/routes/proxy.tsx` and `/app/routes/proxy.ws.tsx`
+- **Files**: `/app/routes/proxy.tsx` (Note: `proxy.ws.tsx` removed)
 - **Tasks**:
   - ✅ Convert WebSocket endpoint to support Server-Sent Events
     - ✅ Create SSE endpoint with proper headers
@@ -382,7 +373,7 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
 ### 6.6. Backend LiveKit Proxy Updates
 - **Files**: `/app/livekit-proxy.server.js` and related Docker configurations
 - **Details**:
-  - **Current Status**: Only supports WebSocket, lacks HTTP POST and SSE handling
+  - **Current Status**: Only supports WebSocket, lacks HTTP POST and SSE handling (Note: WebSocket support now removed)
   - **Technical Approach**: Update server to handle both communication methods
 - **Tasks**:
   - 🔄 Add HTTP endpoint for audio POST requests
@@ -391,10 +382,10 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
     - 🔄 Implement audio buffer handling from POST data
     - 🔄 Support chunk sequence tracking for better audio assembly
   - 🔄 Implement SSE support for streaming responses
-    - 🔄 Create handler for SSE connection requests
-    - 🔄 Implement proper SSE headers and event formatting
-    - 🔄 Add support for different event types (message, result, error)
-    - 🔄 Create heartbeat mechanism to keep connections alive
+    - ✅ Create handler for SSE connection requests
+    - ✅ Implement proper SSE headers and event formatting
+    - ✅ Add support for different event types (message, result, error)
+    - ✅ Create heartbeat mechanism to keep connections alive
   - 🔄 Add session management for SSE connections
     - 🔄 Create session tracking store with unique IDs
     - 🔄 Link sessions to shop domains and participant IDs
@@ -402,7 +393,7 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
     - 🔄 Associate audio POST requests with active sessions
   - 🔄 Update Docker configuration for new server capabilities
     - 🔄 Ensure proper environment variables are passed
-    - 🔄 Update health check to verify both WebSocket and HTTP endpoints
+    - ✅ Update health check to verify HTTP endpoint only
     - 🔄 Add volume mounts for easier development and debugging
     - 🔄 Implement proper logging for both connection types
   - 🔄 Update server.js entry point
@@ -530,6 +521,7 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
 - ✅ HTTP POST audio data transmission
 - ✅ Comprehensive error handling and retry logic
 - ✅ Chunked audio transmission with sequence tracking
+- ✅ WebSocket code removal from backend and frontend
 
 ### 8.2. In Progress (Prioritized)
 1. ✅ Converting WebSocket to SSE for response streaming
@@ -556,58 +548,102 @@ The Voice AI Shopping Assistant is a Shopify app that enables voice-based naviga
    - 🔄 Need to test streaming responses with real Ultravox API
 
 ### 8.3. Next Critical Steps (Priority Order with Detailed Sub-tasks)
-1. **Update LiveKit Backend for SSE Support** (CRITICAL PRIORITY)
-   - Update `livekit-proxy.server.js` to properly support both WebSocket and HTTP POST
-   - Add HTTP handler for audio POST requests in the LiveKit proxy
-   - Implement session tracking for SSE connections
-   - Add support for audio chunk sequence numbers
-   - Create proper SSE response handling in the backend
-   - Update the Docker container to use the newest server version
-   - Test end-to-end communication with both approaches
-   - Ensure backward compatibility for existing clients
 
-2. **Fix Frontend SSE Implementation Issues** (HIGHEST PRIORITY)
-   - Fix the EventSource URL format (should be `?stream=true&shop=` instead of `&shop=`)
-   - Update voice-assistant.js to reference sseEndpoint instead of wsEndpoint
-   - Fix duplicate 'open' event handler in connectSSE method
-   - Improve error handling for missing or undefined event.data
-   - Fix potential race condition between 'ready' and 'message' events
-   - Add exponential backoff for reconnection attempts
-   - Add proper progress indicators during connection attempts
-   - Fix browser compatibility issues with EventSource
-   - Implement polyfill for browsers that don't support EventSource
+**--- NEW: Refactor to Direct LiveKit Connection ---**
 
-3. **Test and Debug SSE Implementation** (HIGH PRIORITY)
-   - Test SSE connections in various browsers (Chrome, Firefox, Safari)
-   - Verify reconnection behavior with simulated network drops
-   - Monitor memory usage during long SSE connections
-   - Ensure proper cleanup of resources after disconnection
-   - Add logging for connection diagnostics
-   - Test audio chunk sequence handling
-   - Verify proper session ID tracking
+**Objective:** Replace the unreliable SSE-over-Proxy connection with a standard, direct WebSocket/WebRTC connection to LiveKit, managed by the LiveKit client SDK.
 
-3. **Implement Tool Calling Framework** (HIGH PRIORITY)
-   - Define JSON schema for product search tool
-   - Create display tool schema for showing results
-   - Implement navigation tool for page transitions
-   - Connect tools to Shopify Storefront API
-   - Create execution engine for tool calls
+**1. Backend: Create LiveKit Token Endpoint** `[ ]`
+   - **File:** `app/routes/api.livekit.token.ts` (New)
+   - **Tasks:**
+     - `[ ]` Create new Remix loader function.
+     - `[ ]` Add authentication (e.g., check session cookie).
+     - `[ ]` Read `LIVEKIT_URL`, `LIVEKIT_KEY`, `LIVEKIT_SECRET` from `process.env`.
+     - `[ ]` Install `livekit-server-sdk` if not already present (`npm install livekit-server-sdk`).
+     - `[ ]` Import `AccessToken` from `livekit-server-sdk`.
+     - `[ ]` Instantiate `AccessToken` with API key/secret.
+     - `[ ]` Define room name strategy (e.g., `room-${shopDomain}`).
+     - `[ ]` Define participant identity strategy (e.g., `user-${uniqueId}`).
+     - `[ ]` Set token permissions (e.g., `canPublish`, `canSubscribe`).
+     - `[ ]` Generate JWT using `token.toJwt()`.
+     - `[ ]` Return `{ livekitUrl: process.env.LIVEKIT_URL, token: jwt }` as JSON.
+     - `[ ]` Add appropriate CORS headers (allow storefront origin).
 
-4. **Add Text-to-Speech** (MEDIUM PRIORITY)
-   - Research and select TTS approach (Web Speech API preferred)
-   - Implement speech synthesis wrapper
-   - Add voice selection and configuration
-   - Create playback controls (pause, resume, stop)
-   - Add visual indication during speech
-   - Implement fallback for unsupported browsers
+**2. Frontend: Refactor Connection Logic** `[ ]`
+   - **File:** `extensions/voice-assistant/assets/voice-assistant-integration.js` (or similar)
+   - **Tasks:**
+     - `[ ]` Remove `connectSSE` function and `EventSource` usage.
+     - `[ ]` Remove code related to `/apps/voice?stream=true` endpoint.
+     - `[ ]` Add new function (e.g., `connectLiveKit`) to:
+       - `[ ]` Fetch token/URL from `/api/livekit/token` endpoint.
+       - `[ ]` Handle errors during fetch.
+       - `[ ]` Import `Room`, `RoomEvent`, etc. from `livekit-client`.
+       - `[ ]` Instantiate `new Room(...)`.
+       - `[ ]` Call `await room.connect(livekitUrl, token)`.
+       - `[ ]` Store the `room` instance.
+     - `[ ]` Modify audio sending logic (`startAudio` / audio loop):
+       - `[ ]` Ensure `room.localParticipant` exists after connection.
+       - `[ ]` Use `room.localParticipant.publishTrack(localAudioTrack)` instead of POSTing chunks.
+       - `[ ]` Add `room.on(...)` listeners:
+         - `[ ]` `RoomEvent.TrackSubscribed`: Handle incoming audio tracks (e.g., TTS).
+         - `[ ]` `RoomEvent.DataReceived`: Handle text/control messages if used.
+         - `[ ]` `RoomEvent.ConnectionStateChanged`: Update UI based on connection status (Connecting, Connected, Disconnected, Reconnecting).
+         - `[ ]` `RoomEvent.Disconnected`: Handle cleanup and potential reconnection UI.
+       - `[ ]` Update `stopListening` to call `room.disconnect()` and cleanup LiveKit resources.
+     - `[ ]` Update `startAudio` to use `room.localParticipant.publishTrack(localAudioTrack)` instead of POSTing chunks.
 
-5. **Production Preparation** (LOW PRIORITY)
-   - Create comprehensive testing plan
-   - Finalize error handling and recovery
-   - Set up monitoring and alerting
-   - Implement structured logging
-   - Test across all target browsers and devices
-   - Create deployment documentation and checklist
+**3. Backend: Refactor/Remove Proxy Route & Server** `[ ]`
+   - **File:** `/app/routes/proxy.voice.tsx`
+   - **Tasks:**
+     - `[ ]` Remove loader logic related to forwarding SSE (`isSSE` check).
+     - `[ ]` Remove action logic related to forwarding POSTed audio chunks.
+     - `[ ]` Evaluate if the route is still needed for any *other* App Proxy actions; if not, potentially delete the file.
+   - **File:** `/app/livekit-proxy.server.js`
+   - **Tasks:**
+     - `[ ]` Analyze purpose: Is it *only* for proxying/SSE/Replicate interaction?
+       - **Decision Point:**
+         - `[ ]` **Option A (Webhook):** Remove this server. Implement Replicate logic in Remix backend triggered by LiveKit webhooks.
+         - `[ ]` **Option B (Bot Participant):** Refactor this server to connect to LiveKit using SDK, subscribe to tracks, interact with Replicate, and send results back via LiveKit.
+         - `[ ]` **Option C (Backend Logic):** Remove this server. Implement Replicate logic directly in Remix backend (triggered by webhook or similar). **(Choose one based on analysis)**
+     - `[ ]` Update/remove associated Docker configurations (`Dockerfile.livekit-proxy`, docker-compose entries).
+     - `[ ]` Remove associated start scripts (`start:livekit-proxy`, `test:livekit-connection`).
+
+**4. Server-Side: Handle Audio Processing** `[ ]`
+   - **Tasks:** (Depends on Option chosen in Step 3)
+     - `[ ]` **If Webhook:**
+       - `[ ]` Create new Remix endpoint(s) to receive LiveKit webhooks (e.g., `track_published`).
+       - `[ ]` Implement webhook authentication.
+       - `[ ]` Add logic to fetch/process audio track data (e.g., using Egress or Bot participant).
+       - `[ ]` Add logic to interact with Replicate API.
+     - `[ ]` **If Bot Participant:**
+       - `[ ]` Refactor `livekit-proxy.server.js` (or new service) using `livekit-server-sdk` / `livekit-client`.
+       - `[ ]` Implement logic to join rooms, subscribe to tracks.
+       - `[ ]` Implement Replicate API interaction.
+       - `[ ]` Implement logic to send results back (Data messages, publishing TTS track).
+       - `[ ]` **If Backend Logic:**
+         - `[ ]` Add Replicate interaction logic to the main Remix backend.
+         - `[ ]` Determine trigger mechanism (e.g., webhook).
+
+**--- End Refactor Section ---**
+
+
+**OLD Tasks (Obsolete/Superseded by Refactor):**
+
+1.  **Fix Shopify App Proxy SSE Connection Issues** `[-]` (CRITICAL PRIORITY - OBSOLETE)
+    *   Implement enhanced diagnostics `[-]`
+    *   Fix server-side path handling in livekit-proxy.server.js `[-]`
+    *   Fix client-side URL formation in voice-assistant-integration.js `[-]`
+    *   Fix SSE implementation issues `[-]`
+
+2.  **Improve Error Handling and Connection Recovery** `[~]` (HIGH PRIORITY - Partially relevant, adapt for LiveKit SDK)
+    *   Server-side error improvements `[~]` (Focus on token endpoint)
+    *   Client-side error handling `[~]` (Focus on LiveKit SDK events/errors)
+
+3.  **Test and Debug SSE Implementation** `[-]` (HIGH PRIORITY - OBSOLETE)
+    *   Test component functionality `[-]`
+    *   Test end-to-end flow `[-]`
+
+(... keep other existing tasks like Tool Calling, TTS, Production Prep, updating priorities as needed ...)
 
 ## 9. Data Flow Summary (Revised Architecture)
 
