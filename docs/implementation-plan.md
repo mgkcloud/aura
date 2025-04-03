@@ -1,684 +1,303 @@
-# Voice Assistant Implementation Plan for Shopify
+# Voice Assistant Implementation Plan for Shopify (Hybrid Approach - Option C with Play.ht TTS)
 
 ## Overview
-The Voice AI Shopping Assistant is a Shopify app that enables voice-based navigation and assistance for online shoppers. It consists of a frontend theme extension providing a floating voice assistant button and an expandable information window, with backend processing powered by the Ultravox AI model through Replicate.
+The Voice AI Shopping Assistant is a Shopify app enhancing the shopping experience with voice interaction. It features a frontend theme extension (voice button, info window) and a backend using LiveKit for real-time audio, Replicate/Ultravox for NLU/Tool-Calling, and Play.ht for Text-to-Speech (TTS). This plan details the architecture.
 
 ## 1. Architecture & Core Components
 
 ### 1.1. Core Components
-- **Shopify App**: Built with Remix framework for backend processing
+- **Shopify App Backend**: Remix framework; handles configuration, LiveKit token generation, and Tool Execution.
 - **Theme Extension**: Frontend voice assistant interface for shoppers
-- **Audio Processing**: Server for handling real-time audio streaming
-- **AI Model**: Ultravox via Replicate API for speech understanding and tool calling
+- **LiveKit Server**: Handles real-time audio transport (WebRTC).
+- **Bot Participant Service**: Backend service using LiveKit Server SDK; joins rooms, processes audio, interacts with AI APIs, publishes TTS.
+- **AI Model (NLU/Tools)**: Ultravox via Replicate API.
+- **AI Model (TTS)**: Play.ht via Standard API.
 - **Tool Framework**: System for executing product searches and UI actions based on user intent
 
-### 1.2. Data Flow
-1. Shopper activates the voice assistant button on the storefront
-2. Audio is captured in the browser and sent to the backend
-3. Backend processes the audio and sends to the Ultravox model
-4. Ultravox generates a response with optional tool calls
-5. Backend executes any tool calls (product search, UI actions)
-6. Response is streamed back to the frontend
-7. Frontend displays information and/or executes navigation
+### 1.2. Data Flow (Revised for Hybrid Approach)
+1. Shopper activates the voice assistant button.
+2. Frontend requests a LiveKit token from the Remix Backend.
+3. Frontend connects directly to LiveKit Server using the token and LiveKit Client SDK.
+4. Frontend captures audio and publishes it as a track to the LiveKit room.
+5. **Bot Participant Service** joins the room and subscribes to the user's audio track.
+6. Bot Service buffers/processes audio and sends it to **Replicate API (Ultravox)** for NLU.
+7. Ultravox processes audio and returns NLU results (text response, tool calls) to the Bot Service.
+8. Bot Service triggers **Tool Execution Engine** (in Remix Backend) if tool calls are present.
+9. Bot Service sends the text response from Ultravox to **Play.ht Standard API** for TTS synthesis.
+10. Play.ht returns synthesized audio stream/data to the Bot Service.
+11. Bot Service **publishes the received TTS audio as a new track** to the LiveKit room.
+12. Frontend (already subscribed) receives the Bot's TTS track and plays the audio response.
+13. Frontend updates UI based on tool execution results (potentially received via LiveKit Data Channel from the Backend or inferred from actions).
 
-## 2. Server-Side Implementation
+## 2. Server-Side Implementation (Hybrid Approach)
 
-### 2.1. Update Proxy Route Handler
-- **File**: `/app/routes/proxy.tsx`
+### 2.1. Backend: LiveKit Token Endpoint `[ ]`
+- **File**: `/app/routes/api.livekit.token.ts` (New)
+- **Purpose**: Securely generates LiveKit JWT tokens for frontend clients.
 - **Tasks**:
-  - ~~Implement WebSocket connection handling~~ (REMOVED - Migrated to HTTP/SSE)
-  - 🔄 Convert to HTTP POST endpoint for audio data submission
-    - ✅ Set up POST handler for audio chunks
-    - ✅ Add support for base64 encoded audio
-    - 🔄 Implement chunking and progress tracking
-  - 🔄 Implement SSE (Server-Sent Events) for response streaming
-    - ✅ Set up initial SSE handler function
-    - 🔄 Add proper headers for SSE connections
-    - 🔄 Create streaming response format
-    - 🔄 Implement heartbeat for connection maintenance
-  - ✅ Set up proper CORS headers for cross-origin requests
-    - ✅ Add CORS headers to all responses
-    - ✅ Support OPTIONS preflight requests
-    - ✅ Add participant tracking and session management
-      - ✅ Generate unique participant IDs
-      - ✅ Store session data with shop information
+  - `[x]` Create new Remix loader function.
+  - `[~]` Add authentication (verify Shopify session). (Current: uses query param; needs review)
+  - `[x]` Read LiveKit credentials (`LIVEKIT_URL`, `LIVEKIT_KEY`, `LIVEKIT_SECRET`) from `process.env`.
+  - `[x]` Install `livekit-server-sdk`.
+  - `[x]` Import `AccessToken` from `livekit-server-sdk`.
+  - `[x]` Instantiate `AccessToken`.
+  - `[x]` Define room name strategy (e.g., `room-${shopDomain}`).
+  - `[x]` Define participant identity strategy (e.g., `user-${uniqueId}`).
+  - `[x]` Set appropriate token permissions (`canPublish: true`, `canSubscribe: true`).
+  - `[x]` Generate JWT using `token.toJwt()`.
+  - `[x]` Return `{ livekitUrl: process.env.LIVEKIT_URL, token: jwt }` as JSON.
+  - `[x]` Implement CORS headers to allow requests from the storefront origin.
 
-### 2.2. Configure Audio Processing Server
-- **File**: `/app/livekit-proxy.server.js`
+### 2.2. Bot Participant Service `[ ]`
+- **File**: `/app/bot-participant.service.ts` (New or refactored from `livekit-proxy.server.js`)
+- **Purpose**: Connects to LiveKit rooms, processes user audio, interacts with NLU (Replicate) and TTS (Play.ht) APIs, and publishes TTS audio back to the room.
 - **Tasks**:
-  - ✅ Fix ES module compatibility issues
-    - ✅ Update import/export syntax
-    - ✅ Configure proper module loading
-  - ✅ Configure audio buffer management for optimal processing
-    - ✅ Set up buffer sizes for speech recognition
-    - ✅ Implement proper audio parameter handling
-  - ✅ Implement connection with Replicate API for Ultravox model
-    - ✅ Configure API authentication
-    - ✅ Set up proper request format
-    - ✅ Add error handling for API calls
-  - ✅ Set up connection error handling
-    - ✅ Add timeout handling
-    - ✅ Implement reconnection logic
-  - ✅ Ensure proper cleanup of resources when connections close
-    - ~~Clean up WebSocket connections~~ (REMOVED)
-    - ✅ Release audio resources
-  - 🔄 Implement streaming responses via SSE
-    - 🔄 Convert chunked responses to SSE format
-    - 🔄 Add event typing for different message types
-    - 🔄 Implement progressive response handling
+  - `[ ]` Implement service using `livekit-server-sdk` (Node.js).
+  - `[ ]` Connect to LiveKit server using API key/secret.
+  - `[ ]` Implement logic to join relevant rooms (triggered by webhook or other mechanism).
+  - `[ ]` Subscribe to user audio tracks (`RoomEvent.TrackSubscribed`).
+  - `[ ]` Buffer/process received audio data (e.g., format conversion if needed).
+  - `[ ]` Integrate with Replicate API (Ultravox) for NLU.
+  - `[ ]` Integrate with Play.ht Standard API for TTS.
+  - `[ ]` Publish received TTS audio as a new track to the LiveKit room.
+  - `[ ]` Handle tool call triggers (e.g., send request to Remix backend Tool Execution Engine).
+  - `[ ]` Manage service lifecycle, error handling, and reconnection.
 
-~~### 2.3. Add WebSocket Support Route~~ (REMOVED - File deleted)
-~~- **File**: `/app/routes/proxy.ws.tsx`~~
-~~- **Tasks**:~~
-  ~~- Create dedicated WebSocket route~~
-  ~~- Implement connection upgrade handling~~
-  ~~- Add error handling for connection failures~~
+### 2.3. Backend: Tool Execution Engine `[ ]`
+- **File**: `/app/routes/api.tool.execute.ts` (New, or integrated into existing backend logic)
+- **Purpose**: Executes actions requested by the NLU model (via the Bot Service).
+- **Tasks**:
+  - `[ ]` Create endpoint(s) to receive tool execution requests from Bot Service.
+  - `[ ]` Implement authentication/authorization for tool requests.
+  - `[ ]` Implement logic for `searchProducts` tool using Shopify Storefront API.
+  - `[ ]` Implement logic for other potential tools (e.g., navigation, UI updates).
+  - `[ ]` Format tool execution results.
+  - `[ ]` Determine mechanism to send results back to frontend (e.g., via LiveKit Data Channel initiated by backend, or relayed through Bot Service).
 
-## 3. Client-Side Implementation
+## 3. Client-Side Implementation (Hybrid Approach)
 
-### 3.1. Update Voice Assistant Integration
+### 3.1. Frontend: LiveKit Connection & Audio Handling
 - **File**: `/extensions/voice-assistant/assets/voice-assistant-integration.js`
 - **Tasks**:
-  - ✅ Implement high-quality audio capture
-    - ✅ Configure optimal audio parameters (16kHz, mono)
-    - ✅ Add noise suppression and echo cancellation
-    - ✅ Implement proper audio track management
-  - ✅ Set optimal audio parameters (16kHz, mono, noise reduction)
-    - ✅ Configure constraints for getUserMedia
-    - ✅ Set up proper audio processing nodes
-  - 🔄 Replace WebSocket sending with HTTP POST
-    - 🔄 Create fetch-based audio sending function
-    - 🔄 Implement proper error handling
-    - 🔄 Add retry logic for failed requests
-  - 🔄 Implement SSE connection for receiving responses
-    - 🔄 Create EventSource connection
-    - 🔄 Set up event listeners for different message types
-    - 🔄 Implement reconnection logic
-  - ✅ Provide visualizer data for UI
-    - ✅ Extract frequency data from audio stream
-    - ✅ Format data for visualization
-    - ✅ Implement callback mechanism for UI updates
+  - `[x]` Implement function to fetch LiveKit token from `/api/livekit/token`.
+  - `[x]` Use `livekit-client` SDK to connect to LiveKit server (`room.connect`).
+  - `[x]` Handle LiveKit connection states (`RoomEvent.ConnectionStateChanged`) for UI feedback.
+  - `[x]` Implement high-quality audio capture (`getUserMedia` with 16kHz, mono, noise suppression). (via `createLocalAudioTrack`)
+  - `[x]` Publish local audio track to LiveKit room (`room.localParticipant.publishTrack`).
+  - `[x]` Subscribe to remote audio tracks (`RoomEvent.TrackSubscribed`), specifically the TTS track from the Bot Participant.
+  - `[x]` Handle playback of subscribed TTS audio tracks.
+  - `[x]` Implement LiveKit disconnection logic (`room.disconnect`).
+  - `[x]` Provide audio level data (from local track) for UI visualization.
+  - `[x]` Remove old SSE/POST connection and audio sending logic.
 
-### 3.2. Update Voice Assistant Interface
+### 3.2. Frontend: Voice Assistant Interface Updates
 - **File**: `/extensions/voice-assistant/assets/voice-assistant.js`
 - **Tasks**:
-  - ✅ Create responsive visualization that works with audio levels
-    - ✅ Implement visual effects based on audio frequency
-    - ✅ Add smooth transitions between audio states
-    - ✅ Create fallback visualization for inactive state
-  - ✅ Implement proper error handling for connection failures
-    - ✅ Display user-friendly error messages
-    - ✅ Add retry functionality
-    - ✅ Implement graceful degradation
-  - ✅ Add UI state management for different connection states
-    - ✅ Create distinct visual states for listening/processing/speaking
-    - ✅ Add proper transitions between states
-    - ✅ Implement loading indicators
-  - ✅ Add proper resource cleanup to prevent memory leaks
-    - ✅ Stop audio tracks when not in use
-    - ✅ Cancel animation frames when hidden
-    - ✅ Remove event listeners when destroying
-  - 🔄 Implement SSE event listeners for streaming responses
-    - 🔄 Create event handling functions for different message types
-    - 🔄 Update UI based on streaming response chunks
-    - 🔄 Add progressive UI updates as response arrives
-  - ❌ Add text-to-speech for voice responses
-    - ❌ Implement Web Speech API integration
-    - ❌ Configure voice settings
-    - ❌ Add playback controls
-    - ❌ Implement fallback for unsupported browsers
+  - `[ ]` Update UI state management to reflect LiveKit connection states (Connecting, Connected, Disconnected, Reconnecting).
+  - `[ ]` Ensure responsive visualization works with audio levels from the local LiveKit track.
+  - `[ ]` Implement playback controls for received TTS audio tracks (if needed beyond auto-play).
+  - `[ ]` Handle errors reported via LiveKit connection state or potentially via Data Channels.
+  - `[ ]` Update UI based on tool execution results (potentially received via LiveKit Data Channel).
+  - `[ ]` Ensure proper cleanup of LiveKit-related resources and listeners on component destruction.
+  - `[ ]` Remove UI elements/logic related to SSE/POST connections.
+  - `[ ]` Remove client-side TTS implementation (Web Speech API) as TTS is now handled server-side via Bot and Play.ht.
 
-### 3.3. Update App Block
+### 3.3. Frontend: App Block Configuration
 - **File**: `/extensions/voice-assistant/blocks/voice-assistant.liquid`
 - **Tasks**:
-  - ✅ Ensure proper script loading
-    - ✅ Add correct script tags and dependencies
-    - ✅ Set up async loading where appropriate
-  - ✅ Set up theme extension structure
-    - ✅ Configure block structure
-    - ✅ Add required HTML elements
-  - ✅ Configure extension settings in TOML file
-    - ✅ Set up extension metadata
-    - ✅ Add settings schema
+  - `[ ]` Ensure scripts (`livekit-client`, `voice-assistant-integration.js`, `voice-assistant.js`) are loaded correctly.
+  - `[ ]` Verify HTML structure supports the updated UI states and components.
+  - `[ ]` Update any Liquid variables or settings if needed for the new connection method.
 
 ## 4. AI Model Integration
 
 ### 4.1. Ultravox Model Integration
+- **Interaction Point**: Bot Participant Service
 - **Tasks**:
-  - ✅ Set up Replicate account and API access
-    - ✅ Create account and generate API key
-    - ✅ Configure authentication
-  - ✅ Configure Ultravox model parameters
-    - ✅ Set up model version
-    - ✅ Configure input parameters
-  - ✅ Implement audio data preparation for model
-    - ✅ Format audio data correctly
-    - ✅ Add metadata and context
-  - ✅ Set up proper request format
-    - ✅ Create request structure
-    - ✅ Add shop context
-  - 🔄 Implement streaming response parsing
-    - 🔄 Create parser for streamed responses
-    - 🔄 Handle partial JSON in streams
-    - 🔄 Implement progressive processing
-  - ❌ Set up tool calling framework
-    - ❌ Define tool schemas for Ultravox
-    - ❌ Create tool execution pipeline
-    - ❌ Implement result handling
+  - `[ ]` Set up Replicate account and API access within Bot Service.
+  - `[ ]` Configure Ultravox model parameters (version, input settings).
+  - `[ ]` Implement audio data preparation (format, context) in Bot Service before sending to Replicate.
+  - `[ ]` Implement request/response handling with Replicate API (including streaming if applicable).
+  - `[ ]` Parse NLU results (text, tool calls) received by Bot Service.
+  - `[ ]` Trigger Tool Execution based on parsed results.
 
-### 4.2. Environment Configuration
+### 4.2. Play.ht TTS Integration
+- **Interaction Point**: Bot Participant Service
+- **Tasks**:
+  - `[ ]` Set up Play.ht account and API access within Bot Service.
+  - `[ ]` Choose Play.ht API (Standard API recommended for streaming/control).
+  - `[ ]` Configure TTS parameters (voice ID, quality, speed).
+  - `[ ]` Implement logic in Bot Service to send text (from Ultravox) to Play.ht API.
+  - `[ ]` Handle synthesized audio stream/data returned from Play.ht.
+  - `[ ]` Implement logic in Bot Service to publish received TTS audio as a LiveKit track.
+
+### 4.3. Environment Configuration
 - **File**: `/.env` and `/.env.example`
 - **Tasks**:
-  - ✅ Add Replicate API key configuration
-    - ✅ Set up secure storage of API keys
-    - ✅ Add documentation for key setup
-  - ✅ Configure Ultravox model version
-    - ✅ Add model version variable
-    - ✅ Document version update process
-  - ✅ Set up URLs and other connection parameters
-    - ✅ Configure LiveKit URLs (Now `LIVEKIT_PROXY_URL`)
-    - ✅ Set API endpoints
-    - ✅ Add timeout settings
+  - `[ ]` Add Replicate API key configuration (`REPLICATE_API_TOKEN`).
+  - `[ ]` Configure Ultravox model version (`ULTRAVOX_MODEL_VERSION`).
+  - `[ ]` Add Play.ht User ID and Secret Key (`PLAYHT_USER_ID`, `PLAYHT_SECRET_KEY`).
+  - `[ ]` Add LiveKit Server connection details (`LIVEKIT_URL`, `LIVEKIT_KEY`, `LIVEKIT_SECRET`).
+  - `[ ]` Ensure secure storage and access for all keys.
+  - `[ ]` Update documentation for all required environment variables.
+  - `[ ]` Remove obsolete variables (e.g., `LIVEKIT_PROXY_URL` if the proxy server is removed).
 
 ## 5. Tool Calling Framework
 
 ### 5.1. Define Tool Schema
+- **Location**: Shared definition or within Bot Service / Remix Backend
 - **Tasks**:
-  - ❌ Create JSON schema for each tool
-    - ❌ Define common schema format
-    - ❌ Create validation functions
-  - ❌ Define product search tool parameters
-    - ❌ Specify query parameters
-    - ❌ Add filter options
-    - ❌ Define sort parameters
-  - ❌ Define UI display tool parameters
-    - ❌ Create product display parameters
-    - ❌ Add message display options
-    - ❌ Define action button parameters
-  - ❌ Define navigation tool parameters
-    - ❌ Specify URL parameters
-    - ❌ Add transition options
-    - ❌ Create confirmation parameters
+  - `[ ]` Define JSON schema for each tool (e.g., `searchProducts`, `navigateToPage`, `displayMessage`).
+  - `[ ]` Ensure schemas are compatible with Ultravox tool calling format.
+  - `[ ]` Define parameters for each tool (e.g., search query, filters, URL, message content).
 
-### 5.2. Implement Tool Execution
+### 5.2. Implement Tool Execution Engine
+- **Location**: Remix Backend (triggered by Bot Service)
 - **Tasks**:
-  - ❌ Implement product search with Shopify Storefront API
-    - ❌ Create GraphQL queries for product search
-    - ❌ Add filter implementation
-    - ❌ Implement result processing
-  - ❌ Create UI display functionality
-    - ❌ Implement product display components
-    - ❌ Add message formatting
-    - ❌ Create loading states
-  - ❌ Implement page navigation
-    - ❌ Add history API integration
-    - ❌ Create smooth transitions
-    - ❌ Implement state persistence
-  - ❌ Add result formatting for frontend
-    - ❌ Create response structure
-    - ❌ Implement JSON serialization
-    - ❌ Add error handling
+  - `[ ]` Create endpoint(s) in Remix backend to handle tool execution requests from Bot Service.
+  - `[ ]` Implement product search logic using Shopify Storefront API (GraphQL).
+  - `[ ]` Implement logic for other tools (e.g., navigation hints, UI updates).
+  - `[ ]` Format tool execution results.
+  - `[ ]` Send results back to the frontend (e.g., via LiveKit Data Channel from Backend, or relayed through Bot Service).
 
-## 6. MVP Features to Implement
+## 6. MVP Features to Implement (Hybrid Approach)
 
-### 6.1. SSE Implementation (HIGHEST PRIORITY)
-- **Files**: `/app/routes/proxy.tsx` (Note: `proxy.ws.tsx` removed)
+### 6.1. LiveKit Connection (Frontend & Backend) `[x]` (HIGHEST PRIORITY)
+- **Files**: `/app/routes/api.livekit.token.ts`, `/extensions/voice-assistant/assets/voice-assistant-integration.js`
 - **Tasks**:
-  - ✅ Convert WebSocket endpoint to support Server-Sent Events
-    - ✅ Create SSE endpoint with proper headers
-    - ✅ Implement connection handling
-    - ✅ Add participant tracking for SSE connections
-  - ✅ Implement event stream response format in backend
-    - ✅ Create standardized event format
-    - ✅ Add event types (message, error, heartbeat)
-    - ✅ Implement proper event serialization
-  - ✅ Set up appropriate headers for SSE connections
-    - ✅ Add Content-Type for event streams
-    - ✅ Configure cache control
-    - ✅ Set up CORS for SSE connections
-  - ✅ Create client-side event stream listener
-    - ✅ Implement EventSource connection
-    - ✅ Add event type handlers
-    - ✅ Create message processing pipeline
-  - ✅ Add reconnection handling for dropped connections
-    - ✅ Implement exponential backoff
-    - ✅ Add connection state tracking
-    - ✅ Create user feedback for reconnection attempts
-  - 🔄 Test with various network conditions
-    - 🔄 Simulate slow connections
-    - 🔄 Test connection drops
-    - 🔄 Verify reconnection behavior
+  - `[x]` Implement LiveKit token generation endpoint in Remix backend.
+  - `[x]` Implement frontend logic to fetch token and connect to LiveKit server using `livekit-client`.
+  - `[x]` Handle connection states and errors robustly on the frontend.
+  - `[x]` Implement audio track publishing from frontend to LiveKit.
 
-### 6.2. Audio HTTP POST Implementation
-- **Files**: `/extensions/voice-assistant/assets/voice-assistant-integration.js` and `/app/routes/proxy.tsx`
-- **Details**: 
-  - **Current Status**: Implemented. The fetch-based audio sending is now complete with proper error handling and timeout logic.
-  - **Technical Approach**: Using fetch API with proper timeouts and retry logic.
+### 6.2. Bot Participant Service `[x]` (HIGH PRIORITY) - Refactored into `app/bot/`
+- **Files**: `/app/bot/livekit.service.ts`, `/app/bot/audio.processor.ts`, `/app/bot/nlu.service.ts`, `/app/bot/bot.orchestrator.ts`, `/app/bot/index.ts` (New)
 - **Tasks**:
-  - ✅ Modify audio sending to use HTTP POST requests
-    - ✅ Create fetch-based audio sending function
-    - ✅ Implement proper content-type headers
-    - ✅ Add metadata to requests (shop, session)
-  - ✅ Implement chunking for large audio files
-    - ✅ Create optimal chunk size determination
-    - ✅ Add sequence numbering
-    - ✅ Implement chunk assembly on server
-  - ✅ Add progress tracking for audio uploads
-    - ✅ Create progress callback mechanism
-    - ✅ Add UI indicators for upload progress
-    - ✅ Implement abort capability for long uploads
-  - ✅ Configure proper request headers
-    - ✅ Set content type and length
-    - ✅ Add authentication headers
-    - ✅ Configure CORS requirements
-  - ✅ Implement error handling for failed uploads
-    - ✅ Add timeout handling
-    - ✅ Implement retry logic with backoff
-    - ✅ Create user-friendly error messages
-    - ✅ Add detailed error logging
+  - `[x]` Set up basic service structure using `@livekit/rtc-node` (`livekit.service.ts`).
+  - `[x]` Implement logic to join LiveKit rooms based on triggers (`livekit.service.ts`, `bot.orchestrator.ts`).
+  - `[x]` Subscribe to user audio tracks (`livekit.service.ts`).
+  - `[x]` Implement basic audio buffering (`audio.processor.ts`).
 
-### 6.3. Text-to-Speech Implementation
-- **Details**: 
-  - **Approach**: Use Web Speech API for browsers that support it with a fallback option.
-  - **Current Status**: Not started.
+### 6.3. NLU Integration (Replicate/Ultravox) `[x]`
+- **Files**: `/app/bot/nlu.service.ts`, `/app/bot/bot.orchestrator.ts`
 - **Tasks**:
-  - ❌ Research TTS service options (browser-based vs. server)
-    - ❌ Evaluate Web Speech API compatibility
-    - ❌ Research cloud TTS services
-    - ❌ Compare quality and performance
-    - ❌ Create comparison document for decision
-  - ❌ Implement Web Speech API for client-side TTS
-    - ❌ Create wrapper function for synthesis
-    - ❌ Add browser compatibility detection
-    - ❌ Implement fallback mechanisms
-    - ❌ Add event handlers for speech events
-  - ❌ Configure voice parameters and settings
-    - ❌ Select appropriate voice
-    - ❌ Configure rate and pitch
-    - ❌ Add language detection and setting
-    - ❌ Create natural-sounding pauses and intonation
-  - ❌ Create audio playback functionality
-    - ❌ Implement play/pause controls
-    - ❌ Add volume adjustment
-    - ❌ Create visual indication of speaking state
-    - ❌ Implement text highlighting during speech
-  - ❌ Add controls for volume and playback rate
-    - ❌ Create user interface for controls
-    - ❌ Implement preference saving
-    - ❌ Add keyboard shortcuts
-    - ❌ Create accessibility-friendly controls
+  - `[x]` Integrate Replicate API client into Bot Service (`nlu.service.ts`).
+  - `[x]` Send buffered audio to Ultravox (`nlu.service.ts`, triggered by `audio.processor.ts` via `bot.orchestrator.ts`). (Includes placeholder WAV encoding)
+  - `[x]` Parse NLU response (text and basic tool calls). (Basic parsing implemented, structure TBD)
 
-### 6.4. Product Search Tool
-- **Details**:
-  - **Approach**: Implement a JSON schema-based tool for product searches that connects to Shopify's Storefront API.
-  - **Current Status**: Not started.
+### 6.4. TTS Integration (Play.ht) `[x]`
+- **Rationale**: Chosen for its specific partnership with LiveKit, aiming for optimized low-latency (<300ms TTFA) real-time TTS crucial for conversational AI, as detailed in their joint announcement. Leverages LiveKit's infrastructure for potentially more reliable audio delivery compared to generic TTS models.
+- **Files**: `/app/bot/tts.service.ts`, `/app/bot/bot.orchestrator.ts`
 - **Tasks**:
-  - ❌ Define product search parameters (query, filters, sort)
-    - ❌ Create schema for search parameters
-    - ❌ Define filter options (price, category, etc.)
-    - ❌ Implement sort parameters
-    - ❌ Add pagination options
-  - ❌ Implement Shopify Storefront API integration
-    - ❌ Create GraphQL query builder
-    - ❌ Implement authentication
-    - ❌ Add caching for performance
-    - ❌ Create error handling
-  - ❌ Create product result formatting
-    - ❌ Design result format structure
-    - ❌ Implement thumbnail and image handling
-    - ❌ Add price formatting
-    - ❌ Create availability indicators
-  - ❌ Add product display components
-    - ❌ Create product card component
-    - ❌ Implement product carousel
-    - ❌ Add quick view functionality
-    - ❌ Create loading states
-  - ❌ Implement navigation to product pages
-    - ❌ Add product page URL generation
-    - ❌ Implement transition effects
-    - ❌ Create breadcrumb generation
-    - ❌ Add history state management
+  - `[x]` Integrate Play.ht Standard API client into Bot Service.
+  - `[x]` Implement authentication using Play.ht User ID and Secret Key.
+  - `[x]` Configure API requests for low latency (e.g., selecting appropriate voice models like "Dialog", specifying quality settings).
+  - `[x]` Send text response from NLU to Play.ht API for synthesis.
+  - `[x]` Implement handling for Play.ht's audio stream response (preferred for low latency) or chunked audio data.
+  - `[x]` Implement logic in Bot Service to buffer/process the received TTS audio stream/chunks.
+  - `[x]` Publish the processed TTS audio as a new audio track to the LiveKit room using the Bot participant.
+  - `[x]` Add error handling for Play.ht API calls (timeouts, invalid requests, etc.).
 
-### 6.5. Enhanced Error Handling
-- **Details**:
-  - **Approach**: Create a comprehensive error handling system with meaningful user feedback and recovery mechanisms.
-  - **Current Status**: Basic error handling implemented, needs enhancement.
+### 6.5. Frontend TTS Playback `[x]`
+- **Files**: `/extensions/voice-assistant/assets/voice-assistant-integration.js`, `/extensions/voice-assistant/assets/voice-assistant.js`
 - **Tasks**:
-  - 🔄 Create comprehensive error detection system
-    - 🔄 Define error categories and codes
-    - 🔄 Implement centralized error tracking
-    - 🔄 Create error logging pipeline
-    - 🔄 Add error severity classification
-  - 🔄 Implement meaningful error messages for users
-    - 🔄 Create user-friendly message templates
-    - 🔄 Add contextual help suggestions
-    - 🔄 Implement action recommendations
-    - 🔄 Create error message localization
-  - 🔄 Add fallback mechanisms for different failure points
-    - 🔄 Implement feature degradation paths
-    - 🔄 Create fallback UI states
-    - 🔄 Add offline support where possible
-    - 🔄 Implement text input fallback for voice failures
-  - 🔄 Create a recovery hierarchy for degraded operation
-    - 🔄 Define feature importance hierarchy
-    - 🔄 Implement progressive enhancement
-    - 🔄 Create recovery sequence for reconnection
-    - 🔄 Add state persistence for recovery
-  - 🔄 Implement error logging and monitoring
-    - 🔄 Create detailed error logs
-    - 🔄 Add error categorization
-    - 🔄 Implement log collection
-    - 🔄 Create monitoring dashboard
+  - `[x]` Implement logic to subscribe to and play the Bot's TTS audio track.
+  - `[x]` Update UI state to indicate when the assistant is "speaking".
 
-### 6.6. Backend LiveKit Proxy Updates
-- **Files**: `/app/livekit-proxy.server.js` and related Docker configurations
-- **Details**:
-  - **Current Status**: Only supports WebSocket, lacks HTTP POST and SSE handling (Note: WebSocket support now removed)
-  - **Technical Approach**: Update server to handle both communication methods
+### 6.6. Basic Tool Execution (Product Search) `[ ]`
+- **Files**: `/app/routes/api.tool.execute.ts` (New), `/app/bot-participant.service.ts`
 - **Tasks**:
-  - 🔄 Add HTTP endpoint for audio POST requests
-    - 🔄 Extend the http.createServer handler to process POST requests
-    - 🔄 Add proper content-type and CORS handling
-    - 🔄 Implement audio buffer handling from POST data
-    - 🔄 Support chunk sequence tracking for better audio assembly
-  - 🔄 Implement SSE support for streaming responses
-    - ✅ Create handler for SSE connection requests
-    - ✅ Implement proper SSE headers and event formatting
-    - ✅ Add support for different event types (message, result, error)
-    - ✅ Create heartbeat mechanism to keep connections alive
-  - 🔄 Add session management for SSE connections
-    - 🔄 Create session tracking store with unique IDs
-    - 🔄 Link sessions to shop domains and participant IDs
-    - 🔄 Implement session expiration and cleanup
-    - 🔄 Associate audio POST requests with active sessions
-  - 🔄 Update Docker configuration for new server capabilities
-    - 🔄 Ensure proper environment variables are passed
-    - ✅ Update health check to verify HTTP endpoint only
-    - 🔄 Add volume mounts for easier development and debugging
-    - 🔄 Implement proper logging for both connection types
-  - 🔄 Update server.js entry point
-    - 🔄 Add graceful shutdown handlers for all connection types
-    - 🔄 Implement cleaner error handling and reporting
-    - 🔄 Add proper startup sequence logging
+  - `[ ]` Define schema for `searchProducts` tool.
+  - `[ ]` Implement trigger in Bot Service to call Remix backend endpoint for tool execution.
+  - `[ ]` Implement Remix endpoint to handle `searchProducts` request.
+  - `[ ]` Integrate with Shopify Storefront API (GraphQL) for basic product search.
+  - `[ ]` Send results back (e.g., via LiveKit Data Channel or have Bot Service announce results via TTS).
 
-### 6.7. Frontend SSE Error Handling Improvements
-- **Files**: `/extensions/voice-assistant/assets/voice-assistant-integration.js` and `/extensions/voice-assistant/assets/voice-assistant.js`
-- **Details**:
-  - **Current Status**: Basic SSE implementation with error handling deficiencies
-  - **Technical Approach**: Enhance error detection, user feedback, and reconnection logic
+### 6.7. Remove Obsolete Code `[~]`
+- **Files**: `/app/routes/proxy.tsx`, `/app/livekit-proxy.server.js`, `/extensions/voice-assistant/assets/*`
 - **Tasks**:
-  - 🔄 Fix EventSource URL formatting and connection issues
-    - 🔄 Correct SSE URL parameter format (`?stream=true&shop=` instead of concatenation)
-    - 🔄 Update references to endpoint variables in all files
-    - 🔄 Fix duplicate event listeners for 'open' events
-    - 🔄 Implement proper session ID tracking across reconnects
-  - 🔄 Enhance error detection for SSE connections
-    - 🔄 Properly handle various readyState values (0=connecting, 1=open, 2=closed)
-    - 🔄 Improve error handling for missing or undefined event.data
-    - 🔄 Add proper error classification for network vs. server errors
-    - 🔄 Implement more robust error event parsing
-  - 🔄 Improve reconnection logic
-    - 🔄 Implement exponential backoff with jitter
-    - 🔄 Add max retry limits with proper user feedback
-    - 🔄 Preserve session context during reconnects when possible
-    - 🔄 Add recovery state to resume interrupted voice sessions
-  - 🔄 Enhance user feedback during connection issues
-    - 🔄 Add visual indicators for connection state
-    - 🔄 Provide meaningful error messages based on error type
-    - 🔄 Update UI elements to reflect connection status
-    - 🔄 Add retry button for manual reconnection attempts
-  - 🔄 Implement browser compatibility improvements
-    - 🔄 Add EventSource polyfill for older browsers
-    - 🔄 Test in major browsers (Chrome, Firefox, Safari, Edge)
-    - 🔄 Add fallback mechanism for browsers without SSE support
-    - 🔄 Create graceful degradation for limited browser environments
+  - `[ ]` Remove all SSE connection logic from frontend and backend.
+  - `[ ]` Remove all HTTP POST audio sending logic from frontend.
+  - `[ ]` Remove or significantly refactor `/app/routes/proxy.tsx` if no longer needed for App Proxy.
+  - `[x]` Replace `/app/livekit-proxy.server.js` with new Bot Service architecture.
+  - `[ ]` Remove client-side TTS (Web Speech API) code.
 
-## 7. Testing & Deployment
+## 7. Testing & Deployment (Hybrid Approach)
 
 ### 7.1. Local Testing
-- **Details**:
-  - **Approach**: Implement a systematic testing strategy for component and end-to-end testing.
-  - **Current Status**: Ad-hoc testing in place, needs formalization.
+- **Details**: Focus on testing the direct LiveKit connection, Bot interaction, and AI API integrations, paying close attention to latency.
 - **Tasks**:
-  - 🔄 Test SSE connection using browser debugging tools
-    - 🔄 Verify proper connection establishment
-    - 🔄 Test message receipt and processing
-    - 🔄 Check connection maintenance
-    - 🔄 Validate reconnection behavior
-  - 🔄 Verify audio processing with test recordings
-    - 🔄 Create test audio samples
-    - 🔄 Verify processing pipeline
-    - 🔄 Test different audio conditions
-    - 🔄 Validate noise handling
-  - 🔄 Check response latency and optimize if needed
-    - 🔄 Measure end-to-end response time
-    - 🔄 Identify bottlenecks
-    - 🔄 Implement optimizations
-    - 🔄 Create performance benchmarks
-  - 🔄 Test across different browsers and devices
-    - 🔄 Create browser compatibility matrix
-    - 🔄 Test on mobile devices
-    - 🔄 Verify tablet experience
-    - 🔄 Create browser-specific workarounds if needed
+  - `[ ]` Test LiveKit connection establishment and stability (WebRTC).
+  - `[ ]` Verify audio publishing from frontend and subscription by Bot Service.
+  - `[ ]` Test NLU processing via Replicate (latency, accuracy).
+  - `[ ]` **Test TTS synthesis via Play.ht:**
+    - `[ ]` Verify successful audio generation and publishing back to LiveKit by Bot Service.
+    - `[ ]` **Measure end-to-end TTS latency** (from text sent to Play.ht to audio playback start on frontend) - target <300ms TTFA if possible.
+    - `[ ]` Verify quality and clarity of Play.ht synthesized audio.
+  - `[ ]` Verify frontend playback of TTS audio track.
+  - `[ ]` Test basic tool execution flow (product search).
+  - `[ ]` Check overall response latency and identify bottlenecks in the new pipeline (NLU + TTS + Tool Execution).
+  - `[ ]` Test across different browsers and devices.
 
 ### 7.2. Shopify App Configuration
 - **File**: `/shopify.app.toml`
-- **Details**:
-  - **Current Status**: Basic configuration in place, needs verification for production.
+- **Details**: Ensure configuration supports the new backend endpoints (token, tool execution) if needed via App Proxy, or direct calls if authenticated.
 - **Tasks**:
-  - ✅ Configure correct App Proxy subpath and prefix
-    - ✅ Set proxy path for API endpoints
-    - ✅ Configure prefix for Shopify routing
-  - 🔄 Verify proxy URL points to production server
-    - 🔄 Update URL for production environment
-    - 🔄 Test proxy functionality
-    - 🔄 Verify cross-domain communication
-  - 🔄 Set up proper CORS configuration
-    - 🔄 Configure allowed origins
-    - 🔄 Set up method restrictions
-    - 🔄 Add proper header handling
-    - 🔄 Test CORS functionality
+  - `[ ]` Review `app_proxy` settings; remove if `/apps/voice` is no longer used.
+  - `[ ]` Ensure CORS is correctly configured for the `/api/livekit/token` endpoint.
+  - `[ ]` Verify authentication for backend API endpoints.
 
 ### 7.3. Production Deployment
-- **Details**:
-  - **Approach**: Create a robust deployment process with proper monitoring and failover.
-  - **Current Status**: Not started.
+- **Details**: Deploy Remix backend, Bot Participant Service, and ensure LiveKit server is configured.
 - **Tasks**:
-  - ❌ Deploy updates to production environment
-    - ❌ Create deployment checklist
-    - ❌ Implement staged rollout
-    - ❌ Set up version control tagging
-    - ❌ Create rollback procedures
-  - ❌ Configure proper SSL certificates
-    - ❌ Generate and install SSL certificates
-    - ❌ Set up auto-renewal
-    - ❌ Configure secure headers
-    - ❌ Test SSL configuration
-  - ❌ Set up monitoring for connection issues
-    - ❌ Implement health check endpoints
-    - ❌ Create monitoring dashboard
-    - ❌ Set up alerts for critical issues
-    - ❌ Implement performance monitoring
-  - ❌ Implement logging for troubleshooting
-    - ❌ Create centralized logging
-    - ❌ Implement log rotation
-    - ❌ Add structured logging format
-    - ❌ Create log analysis tools
+  - `[ ]` Create deployment strategy for Remix backend and Bot Service (e.g., separate containers/services).
+  - `[ ]` Configure production environment variables for all services (LiveKit, Replicate, Play.ht, Shopify).
+  - `[ ]` Set up monitoring for LiveKit connection health, Bot Service status, and API interactions.
+  - `[ ]` Implement robust logging across all components.
+  - `[ ]` Configure SSL certificates for all public-facing endpoints.
 
-## 8. Current Status and Next Steps
+## 8. Current Status and Next Steps (Hybrid Approach)
 
-### 8.1. Completed Tasks
-- ✅ Initial WebRTC audio integration 
-- ✅ Audio capture and processing in browser
-- ✅ Audio proxy server configuration
-- ✅ Basic Replicate API integration
-- ✅ Voice assistant UI components and visualization
-- ✅ CORS configuration for cross-origin requests
-- ✅ Basic participant tracking and session management
-- ✅ Audio parameter optimization for speech recognition
-- ✅ Visualization based on actual audio levels
-- ✅ SSE implementation for streaming responses
-- ✅ HTTP POST audio data transmission
-- ✅ Comprehensive error handling and retry logic
-- ✅ Chunked audio transmission with sequence tracking
-- ✅ WebSocket code removal from backend and frontend
+### 8.1. Completed Tasks (Hybrid Architecture)
+- ✅ LiveKit Token Endpoint and Connection Flow
+- ✅ Bot Service Architecture (LiveKit, Audio Processing, NLU, TTS)
+- ✅ Replicate/Ultravox NLU Integration
+- ✅ Play.ht TTS Integration
+- ✅ TTS Audio Publishing to LiveKit Room
+- ✅ Docker/Deployment Configuration
+- ✅ Frontend TTS Audio Subscription and Playback
 
-### 8.2. In Progress (Prioritized)
-1. ✅ Converting WebSocket to SSE for response streaming
-   - ✅ Implemented SSE headers and connection handling
-   - ✅ Implemented client-side EventSource integration
-   - ✅ Added support for progressive response chunks
-   - 🔄 Need to test in various network conditions
+### 8.2. In Progress 
+1. `[ ]` **Tool Execution Framework:** Implement basic product search capability.
+2. `[ ]` **Cleanup Legacy Code:** Remove obsolete SSE and HTTP POST logic.
+3. `[ ]` **Testing:** Thoroughly test the end-to-end flow.
 
-2. ✅ Implementing HTTP POST for audio data transmission
-   - ✅ Implemented complete POST endpoint
-   - ✅ Added chunking and sequence tracking
-   - ✅ Added retry logic and error handling
-   - ✅ Implemented request cancellation and timeouts
+### 8.3. Next Critical Steps
+1. **Comprehensive Testing:** Test the entire flow from audio capture to TTS response.
+2. **Tool Framework Implementation:** Complete the basic product search capability.
+3. **Code Cleanup:** Remove all obsolete code related to the previous architecture.
+4. **Production Deployment:** Configure and deploy to production with proper monitoring.
 
-3. 🔄 Enhancing error handling and recovery mechanisms
-   - ✅ Implemented standardized error codes and response format
-   - ✅ Created user-friendly error messages
-   - 🔄 Working on fallback mechanisms
-   - 🔄 Need to add more comprehensive recovery strategies
+## 9. Data Flow Summary (Hybrid Architecture)
 
-4. 🔄 Creating streaming response processing
-   - ✅ Implemented event-based response handling
-   - ✅ Set up progressive UI updates
-   - 🔄 Need to test streaming responses with real Ultravox API
-
-### 8.3. Next Critical Steps (Priority Order with Detailed Sub-tasks)
-
-**--- NEW: Refactor to Direct LiveKit Connection ---**
-
-**Objective:** Replace the unreliable SSE-over-Proxy connection with a standard, direct WebSocket/WebRTC connection to LiveKit, managed by the LiveKit client SDK.
-
-**1. Backend: Create LiveKit Token Endpoint** `[ ]`
-   - **File:** `app/routes/api.livekit.token.ts` (New)
-   - **Tasks:**
-     - `[ ]` Create new Remix loader function.
-     - `[ ]` Add authentication (e.g., check session cookie).
-     - `[ ]` Read `LIVEKIT_URL`, `LIVEKIT_KEY`, `LIVEKIT_SECRET` from `process.env`.
-     - `[ ]` Install `livekit-server-sdk` if not already present (`npm install livekit-server-sdk`).
-     - `[ ]` Import `AccessToken` from `livekit-server-sdk`.
-     - `[ ]` Instantiate `AccessToken` with API key/secret.
-     - `[ ]` Define room name strategy (e.g., `room-${shopDomain}`).
-     - `[ ]` Define participant identity strategy (e.g., `user-${uniqueId}`).
-     - `[ ]` Set token permissions (e.g., `canPublish`, `canSubscribe`).
-     - `[ ]` Generate JWT using `token.toJwt()`.
-     - `[ ]` Return `{ livekitUrl: process.env.LIVEKIT_URL, token: jwt }` as JSON.
-     - `[ ]` Add appropriate CORS headers (allow storefront origin).
-
-**2. Frontend: Refactor Connection Logic** `[ ]`
-   - **File:** `extensions/voice-assistant/assets/voice-assistant-integration.js` (or similar)
-   - **Tasks:**
-     - `[ ]` Remove `connectSSE` function and `EventSource` usage.
-     - `[ ]` Remove code related to `/apps/voice?stream=true` endpoint.
-     - `[ ]` Add new function (e.g., `connectLiveKit`) to:
-       - `[ ]` Fetch token/URL from `/api/livekit/token` endpoint.
-       - `[ ]` Handle errors during fetch.
-       - `[ ]` Import `Room`, `RoomEvent`, etc. from `livekit-client`.
-       - `[ ]` Instantiate `new Room(...)`.
-       - `[ ]` Call `await room.connect(livekitUrl, token)`.
-       - `[ ]` Store the `room` instance.
-     - `[ ]` Modify audio sending logic (`startAudio` / audio loop):
-       - `[ ]` Ensure `room.localParticipant` exists after connection.
-       - `[ ]` Use `room.localParticipant.publishTrack(localAudioTrack)` instead of POSTing chunks.
-       - `[ ]` Add `room.on(...)` listeners:
-         - `[ ]` `RoomEvent.TrackSubscribed`: Handle incoming audio tracks (e.g., TTS).
-         - `[ ]` `RoomEvent.DataReceived`: Handle text/control messages if used.
-         - `[ ]` `RoomEvent.ConnectionStateChanged`: Update UI based on connection status (Connecting, Connected, Disconnected, Reconnecting).
-         - `[ ]` `RoomEvent.Disconnected`: Handle cleanup and potential reconnection UI.
-       - `[ ]` Update `stopListening` to call `room.disconnect()` and cleanup LiveKit resources.
-     - `[ ]` Update `startAudio` to use `room.localParticipant.publishTrack(localAudioTrack)` instead of POSTing chunks.
-
-**3. Backend: Refactor/Remove Proxy Route & Server** `[ ]`
-   - **File:** `/app/routes/proxy.voice.tsx`
-   - **Tasks:**
-     - `[ ]` Remove loader logic related to forwarding SSE (`isSSE` check).
-     - `[ ]` Remove action logic related to forwarding POSTed audio chunks.
-     - `[ ]` Evaluate if the route is still needed for any *other* App Proxy actions; if not, potentially delete the file.
-   - **File:** `/app/livekit-proxy.server.js`
-   - **Tasks:**
-     - `[ ]` Analyze purpose: Is it *only* for proxying/SSE/Replicate interaction?
-       - **Decision Point:**
-         - `[ ]` **Option A (Webhook):** Remove this server. Implement Replicate logic in Remix backend triggered by LiveKit webhooks.
-         - `[ ]` **Option B (Bot Participant):** Refactor this server to connect to LiveKit using SDK, subscribe to tracks, interact with Replicate, and send results back via LiveKit.
-         - `[ ]` **Option C (Backend Logic):** Remove this server. Implement Replicate logic directly in Remix backend (triggered by webhook or similar). **(Choose one based on analysis)**
-     - `[ ]` Update/remove associated Docker configurations (`Dockerfile.livekit-proxy`, docker-compose entries).
-     - `[ ]` Remove associated start scripts (`start:livekit-proxy`, `test:livekit-connection`).
-
-**4. Server-Side: Handle Audio Processing** `[ ]`
-   - **Tasks:** (Depends on Option chosen in Step 3)
-     - `[ ]` **If Webhook:**
-       - `[ ]` Create new Remix endpoint(s) to receive LiveKit webhooks (e.g., `track_published`).
-       - `[ ]` Implement webhook authentication.
-       - `[ ]` Add logic to fetch/process audio track data (e.g., using Egress or Bot participant).
-       - `[ ]` Add logic to interact with Replicate API.
-     - `[ ]` **If Bot Participant:**
-       - `[ ]` Refactor `livekit-proxy.server.js` (or new service) using `livekit-server-sdk` / `livekit-client`.
-       - `[ ]` Implement logic to join rooms, subscribe to tracks.
-       - `[ ]` Implement Replicate API interaction.
-       - `[ ]` Implement logic to send results back (Data messages, publishing TTS track).
-       - `[ ]` **If Backend Logic:**
-         - `[ ]` Add Replicate interaction logic to the main Remix backend.
-         - `[ ]` Determine trigger mechanism (e.g., webhook).
-
-**--- End Refactor Section ---**
-
-
-**OLD Tasks (Obsolete/Superseded by Refactor):**
-
-1.  **Fix Shopify App Proxy SSE Connection Issues** `[-]` (CRITICAL PRIORITY - OBSOLETE)
-    *   Implement enhanced diagnostics `[-]`
-    *   Fix server-side path handling in livekit-proxy.server.js `[-]`
-    *   Fix client-side URL formation in voice-assistant-integration.js `[-]`
-    *   Fix SSE implementation issues `[-]`
-
-2.  **Improve Error Handling and Connection Recovery** `[~]` (HIGH PRIORITY - Partially relevant, adapt for LiveKit SDK)
-    *   Server-side error improvements `[~]` (Focus on token endpoint)
-    *   Client-side error handling `[~]` (Focus on LiveKit SDK events/errors)
-
-3.  **Test and Debug SSE Implementation** `[-]` (HIGH PRIORITY - OBSOLETE)
-    *   Test component functionality `[-]`
-    *   Test end-to-end flow `[-]`
-
-(... keep other existing tasks like Tool Calling, TTS, Production Prep, updating priorities as needed ...)
-
-## 9. Data Flow Summary (Revised Architecture)
-
-1. **Voice Capture**:
-   - Browser captures audio via WebRTC getUserMedia API
-   - Audio is processed for optimal quality (noise reduction, etc.)
-   - Audio chunks are encoded as base64
-
-2. **Data Transmission**:
-   - Client establishes SSE connection via `/apps/voice?stream=true&shop=[shop_domain]`
-   - Server assigns a unique session ID for the connection
-   - Audio chunks sent via HTTP POST to `/apps/voice` with session ID and request ID
-   - Each chunk includes sequence number for tracking
-   - Server buffers and forwards audio to backend for processing
-
-3. **Processing**:
-   - Server accumulates audio chunks until sufficient for processing
-   - Buffered audio sent to Replicate API (Ultravox model)
-   - AI processes audio and generates progressive response
-   - Response may include tool calls (product search, navigation)
-   - Tool calls executed as they arrive (asynchronously)
-
-4. **Response Delivery**:
-   - Server streams response via SSE events to client in real-time
-   - Different event types used for different response parts:
-     - 'message' for status updates
-     - 'result' for assistant responses
-     - 'error' for error messages
-     - 'heartbeat' to keep connection alive
-   - Client receives and processes event stream
-   - UI updates progressively as response chunks arrive
-   - Text-to-speech plays audio response if enabled
-   - Navigation or search actions executed based on tool calls
+1.  **Activation & Token:** User activates -> Frontend requests token from Remix Backend -> Backend returns LiveKit URL & Token.
+2.  **LiveKit Connection:** Frontend connects to LiveKit Server using Token & SDK.
+3.  **Audio Publishing:** Frontend captures audio -> Publishes audio track to LiveKit Room.
+4.  **Bot Subscription:** Bot Participant Service joins room -> Subscribes to user's audio track.
+5.  **NLU Processing:** Bot Service sends audio to Replicate/Ultravox -> Receives text/tool calls.
+6.  **Tool Execution (if needed):** Bot Service triggers Remix Backend endpoint -> Backend executes tool (e.g., Shopify API call) -> Backend sends results (e.g., via LiveKit Data Channel).
+7.  **TTS Synthesis:** Bot Service sends text response to Play.ht -> Receives TTS audio stream/data.
+8.  **TTS Publishing:** Bot Service publishes TTS audio as a new track to LiveKit Room.
+9.  **Frontend Playback:** Frontend subscribes to Bot's TTS track -> Plays audio response.
+10. **UI Update:** Frontend updates UI based on TTS state and tool results (from Data Channel).
 
 ## 10. Build Log
+
+### 2025-04-03 (Hybrid Plan Update)
+- Refactored implementation plan (Sections 6-10) to align with the Hybrid Architecture (Option C) using LiveKit direct connection, Bot Participant Service, and Play.ht TTS.
+- Updated MVP features, testing, deployment, status, and data flow sections.
+- Marked old SSE/POST related tasks and sections as obsolete or needing rework.
+- Prioritized tasks for the Hybrid MVP.
 
 ### 2025-03-22
 - Reviewed SSE implementation and identified frontend and backend issues

@@ -6,79 +6,67 @@ The Voice AI Shopping Assistant is built on a modern, scalable architecture that
 
 ## Architecture Diagram
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                          Shopify Merchant Store                          │
-│                                                                         │
-│  ┌─────────────────────┐        ┌────────────────────────────────────┐  │
-│  │                     │        │      Theme App Extension            │  │
-│  │  Shopify Admin      │        │                                     │  │
-│  │                     │        │  ┌──────────────┐   ┌────────────┐ │  │
-│  │ ┌───────────────┐  │        │  │ Voice UI     │   │ Assistant  │ │  │
-│  │ │ App Settings  │  │        │  │ Components   │   │ Logic      │ │  │
-│  │ │ Configuration │  │        │  └──────┬───────┘   └─────┬──────┘ │  │
-│  │ └───────┬───────┘  │        │         │                 │        │  │
-│  │         │          │        │         └─────────┬───────┘        │  │
-│  └─────────┼──────────┘        └─────────────────┬┴────────────────┘  │
-│            │                                     │                     │
-└────────────┼─────────────────────────────────────┼─────────────────────┘
-             │                                     │
-             │                   ┌─────────────────┘
-             │                   │  WebSocket Audio Stream
-┌────────────┼───────────────────┼─────────────────────────────────────────┐
-│            │                   │                                          │
-│  ┌─────────▼─────────┐       ┌─▼────────────────┐     ┌───────────────┐  │
-│  │                   │       │                  │     │               │  │
-│  │  Shopify App      │       │  LiveKit Proxy   │     │ TTS Service   │  │
-│  │  Backend          │       │  Server          │     │               │  │
-│  │                   │       │                  │     │               │  │
-│  │ ┌───────────────┐ │       │ ┌────────────┐  │     │ ┌─────────┐   │  │
-│  │ │ Configuration │ │       │ │ Audio      │  │     │ │ Voice   │   │  │
-│  │ │ Storage       │ │       │ │ Processor  │  │     │ │ Synth   │   │  │
-│  │ └───────────────┘ │       │ └─────┬──────┘  │     │ └─────────┘   │  │
-│  │                   │       │       │         │     │               │  │
-│  └────────┬──────────┘       └───────┼─────────┘     └───────────────┘  │
-│           │                          │                        ▲          │
-│           │       ┌──────────────────┘                        │          │
-│           │       │                                           │          │
-│  ┌────────▼───────▼───┐                              ┌────────┴────────┐ │
-│  │                    │                              │                 │ │
-│  │ Tool Execution     │◄─────────────────────────────┤ Response        │ │
-│  │ Engine             │                              │ Processor       │ │
-│  │                    │                              │                 │ │
-│  └────────┬───────────┘                              └────────┬────────┘ │
-│           │                                                   │          │
-│           │                                                   │          │
-│  Voice AI Assistant Platform                                  │          │
-│                                                               │          │
-└───────────┼───────────────────────────────────────────────────┼──────────┘
-            │                                                   │
-            ▼                                                   ▼
-┌───────────────────────────────────────────────────────────────────────────┐
-│                                                                           │
-│  ┌────────────────────────────────────────────────────────────────────┐   │
-│  │                                                                     │  │
-│  │  Replicate API                                                      │  │
-│  │                                                                     │  │
-│  │  ┌─────────────────────────┐                                        │  │
-│  │  │ Ultravox Model          │                                        │  │
-│  │  │                         │                                        │  │
-│  │  │ - Speech Understanding  │                                        │  │
-│  │  │ - Tool Calling          │                                        │  │
-│  │  │ - Natural Language      │                                        │  │
-│  │  │   Processing            │                                        │  │
-│  │  └─────────────────────────┘                                        │  │
-│  │                                                                     │  │
-│  └────────────────────────────────────────────────────────────────────┘   │
-│                                                                           │
-│  Replicate Platform                                                       │
-│                                                                           │
-└───────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Frontend (Browser)
+        FE_UI[Voice Assistant UI]
+        FE_LK_SDK[LiveKit Client SDK]
+        FE_AudioCap[WebAudio Capture]
+        FE_TTS_Play[TTS Playback]
+
+        FE_UI -- Activate --> FE_AudioCap;
+        FE_AudioCap -- Audio Stream --> FE_LK_SDK;
+        FE_LK_SDK -- Publishes User Audio Track --> LK_Server;
+        LK_Server -- Subscribes Bot TTS Track --> FE_LK_SDK;
+        FE_LK_SDK -- TTS Audio Stream --> FE_TTS_Play;
+        FE_TTS_Play -- Playback --> FE_UI;
+        FE_LK_SDK -- Connection Mgmt --> FE_UI;
+    end
+
+    subgraph Backend (Remix App + Services)
+        BE_Token[LiveKit Token Endpoint]
+        BE_Bot[Bot Participant Service]
+        BE_ToolExec[Tool Execution Engine]
+
+        FE_UI -- Request Token --> BE_Token;
+        BE_Token -- Token/URL --> FE_UI;
+
+        BE_Bot -- Joins Room --> LK_Server;
+        LK_Server -- User Audio Track --> BE_Bot;
+        BE_Bot -- Audio Data --> Rep_API;
+        Rep_API -- NLU/Tool/Text --> BE_Bot;
+        BE_Bot -- Tool Call Info --> BE_ToolExec;
+        BE_ToolExec -- Executes --> Shopify_API[Shopify API];
+        BE_Bot -- Text for TTS --> PlayHT_API;
+        PlayHT_API -- TTS Audio Data/Stream --> BE_Bot;
+        BE_Bot -- Publishes TTS Audio Track --> LK_Server;
+    end
+
+    subgraph External Services
+        LK_Server[LiveKit Server]
+        Rep_API[Replicate API / Ultravox]
+        PlayHT_API[Play.ht Standard API]
+    end
+
+    style Rep_API fill:#f9f,stroke:#333,stroke-width:2px;
+    style PlayHT_API fill:#ccf,stroke:#333,stroke-width:2px;
+    style BE_Bot fill:#dff,stroke:#333,stroke-width:2px;
 ```
 
 **Diagram Description:**
 
-The diagram illustrates the flow: The Shopper interacts with the Voice UI in the Theme App Extension. For voice input, the frontend requests an access token from the Shopify App Backend. Using this token, it establishes a **direct WebSocket/WebRTC connection** to the LiveKit Server for real-time audio streaming. The LiveKit server can then interact with backend services (like a processing service connecting to Replicate) or directly handle TTS. The Shopify App Backend handles configuration, standard API interactions (possibly via App Proxy), and tool execution logic triggered by assistant responses.
+The diagram illustrates the **Hybrid Approach (Option C)** flow:
+1. The Shopper interacts with the Voice UI in the Theme App Extension.
+2. The frontend requests a LiveKit token from the Shopify App Backend (Remix).
+3. The frontend connects directly to the LiveKit Server using the LiveKit Client SDK and publishes the user's audio track.
+4. A **Bot Participant Service** (backend) joins the LiveKit room, subscribes to the user's audio track.
+5. The Bot Service sends the audio to the **Replicate API (Ultravox)** for NLU and Tool Calling.
+6. Replicate returns text response and tool calls to the Bot Service.
+7. The Bot Service (or main backend) triggers the **Tool Execution Engine** based on tool calls.
+8. The Bot Service sends the text response to the **Play.ht Standard API** for TTS.
+9. Play.ht returns synthesized audio to the Bot Service.
+10. The Bot Service publishes the TTS audio as a **new track** to the LiveKit room.
+11. The Frontend subscribes to the Bot's TTS track via the LiveKit Client SDK and plays the audio.
 
 ## Component Descriptions
 
@@ -97,28 +85,28 @@ The diagram illustrates the flow: The Shopper interacts with the Voice UI in the
 
 ### 2. Voice AI Assistant Platform
 
-#### 2.1 Shopify App Backend
+#### 2.1 Shopify App Backend (Remix)
 - **Configuration Storage**: Database to store merchant-specific settings.
 - **LiveKit Token Service**: Endpoint (e.g., `/api/livekit/token`) that generates LiveKit access tokens (JWTs) upon authenticated request from the frontend.
-- **Tool Execution Engine**: Processes tool calls from the Ultravox model (potentially received via LiveKit webhook or a dedicated processing service) to perform actions like product search or UI display.
-- **Response Processor**: Handles the text responses and prepares them for TTS (potentially triggering TTS via LiveKit Server API).
+- **Tool Execution Engine**: (Can be part of Remix or the Bot Service) Processes tool calls from Ultravox to perform actions like product search or UI display via Shopify APIs.
+- **Response Processor**: (Likely within the Bot Service) Handles text responses from Ultravox.
 - **Technologies**: Node.js, Remix.js, Prisma ORM, LiveKit Server SDK (for token generation).
 
 #### 2.2 LiveKit Server (Self-hosted or Cloud)
 - **Signaling Server**: Manages WebSocket connections for room management, participant signaling, and track publishing/subscription.
 - **Media Server (WebRTC)**: Handles the efficient transport of real-time audio/video streams between participants.
 - **API/Webhooks**: Provides APIs for server-side control (e.g., generating tokens, sending data messages, Egress/Ingress) and webhooks for events (e.g., participant join/leave, track published).
-- **Purpose**: Provides the core real-time communication infrastructure.
+- **Purpose**: Provides the core real-time audio/data transport infrastructure.
 - **Technologies**: LiveKit Media Server, Go, WebRTC, WebSockets.
 
-#### 2.3 Optional: Audio Processing Service (if separate from Backend)
-- **Purpose**: Connects to LiveKit as a participant (e.g., a bot) to receive audio tracks, forwards them to Replicate/Ultravox, receives results, and potentially initiates TTS or sends results back via LiveKit data messages or API calls to the main backend.
-- **Technologies**: Node.js (or other), LiveKit Server SDK, Replicate API client.
+#### 2.3 Bot Participant Service
+- **Purpose**: Connects to LiveKit as a participant using the Server SDK. Subscribes to user audio tracks, forwards audio to Replicate/Ultravox, receives NLU/tool results, sends text to Play.ht for TTS, receives TTS audio, and publishes the TTS audio back to the LiveKit room as a new track.
+- **Technologies**: Node.js (or other), LiveKit Server SDK, Replicate API client, Play.ht API client.
 
-#### 2.4 TTS Service
+#### 2.4 TTS Service (Play.ht Standard API)
 - **Voice Synthesis**: Converts text responses into speech.
-- **Purpose**: Creates natural voice responses for the assistant.
-- **Integration**: Can be integrated via LiveKit Server API (e.g., triggering synthesis and playing back into the room) or handled by the client subscribing to text messages and performing client-side TTS.
+- **Purpose**: Provides high-quality, potentially multilingual voice responses.
+- **Integration**: Called via standard REST API by the Bot Participant Service.
 
 ### 3. Replicate Platform
 
@@ -132,25 +120,26 @@ The diagram illustrates the flow: The Shopper interacts with the Voice UI in the
 
 ### Voice Query Flow
 1.  Shopper activates the voice assistant in the storefront (Theme App Extension).
-2.  Frontend requests a LiveKit access token from the Shopify App Backend (e.g., via fetch to `/api/livekit/token`).
+2.  Frontend requests a LiveKit access token from the Shopify App Backend (Remix).
 3.  Backend generates and returns the token and LiveKit server URL.
 4.  Frontend uses LiveKit Client SDK to connect directly to the LiveKit Server (WebSocket/WebRTC).
 5.  Frontend captures audio (WebAudio API) and publishes it as a track to the LiveKit room.
-6.  A server-side component (either the main Backend reacting to webhooks/API, or a dedicated Audio Processing Service connected as a participant) receives the audio track.
-7.  The server-side component forwards the audio to the Replicate/Ultravox model.
-8.  Ultravox processes audio and returns text/tool calls to the server-side component.
-9.  Server-side component processes the response:
-    *   If tool call: Instructs the main Backend to execute the tool.
-    *   If text response: Sends text to TTS Service (e.g., via LiveKit API).
-10. TTS service generates audio and plays it back into the LiveKit room (or sends audio data back to the client).
-11. Frontend receives the audio track (or text/data message) via its LiveKit connection and plays the audio response / updates UI.
+6.  The **Bot Participant Service** (backend) joins the room and subscribes to the user's audio track.
+7.  The Bot Service forwards the audio to the **Replicate/Ultravox** model.
+8.  Ultravox processes audio and returns text response and/or tool calls to the Bot Service.
+9.  The Bot Service (potentially triggering the Tool Execution Engine) processes the response:
+    *   If tool call: Executes the tool (e.g., calls Shopify API).
+    *   If text response: Sends text to **Play.ht Standard API** for TTS.
+10. Play.ht returns synthesized audio data/stream to the Bot Service.
+11. The Bot Service publishes the TTS audio as a **new track** into the LiveKit room.
+12. Frontend subscribes to the Bot's TTS track via its LiveKit connection and plays the audio response / updates UI based on tool results (if applicable).
 
 ### Tool Calling Flow
 1. Ultravox identifies a tool action from the user's query (e.g., "Show me red shirts")
-2. Replicate returns a structured tool call with parameters (e.g., `searchProducts(color: "red", category: "shirts")`)
-3. Tool Execution Engine processes the call and queries Shopify APIs for data
+2. Replicate returns a structured tool call with parameters to the Bot Service.
+3. Bot Service triggers the Tool Execution Engine, which processes the call and queries Shopify APIs for data.
 4. Results are formatted according to the UI requirements (e.g., product carousel)
-5. Frontend receives the display instructions and renders the appropriate UI
+5. Frontend receives display instructions (potentially via LiveKit data channel or inferred from TTS response) and renders the appropriate UI.
 
 ## Technical Considerations
 
@@ -163,8 +152,8 @@ The diagram illustrates the flow: The Shopper interacts with the Voice UI in the
 
 ### Performance
 - **Direct WebRTC connection for low-latency audio streaming via LiveKit.**
-- Audio buffering handled by LiveKit and potentially optimized on the server-side before sending to Replicate.
-- Streaming audio playback via LiveKit.
+- Audio buffering handled by LiveKit and the Bot Participant Service.
+- TTS audio streamed back via LiveKit track. Latency depends on Replicate + Play.ht processing times + network hops.
 
 ### Scalability
 - **LiveKit server designed for horizontal scalability.**
@@ -175,12 +164,12 @@ The diagram illustrates the flow: The Shopper interacts with the Voice UI in the
 
 ### LiveKit Integration
 - **Client-side:** Use `livekit-client` SDK for connection, track publishing/subscription.
-- **Backend:** Use `livekit-server-sdk` (Node.js) for token generation and potentially API interactions/webhook handling.
-- **Audio Processing Service (Optional):** Use `livekit-server-sdk` or `livekit-client` (as a bot participant) to interact with rooms and tracks.
+- **Backend:** Use `livekit-server-sdk` (Node.js) for token generation and API interactions/webhook handling.
+- **Bot Participant Service:** Use `livekit-server-sdk` to join rooms, subscribe/publish tracks, and interact with LiveKit APIs.
 
 ### Replicate Integration
 - Streaming API for real-time responses
-- Tool calling definition and execution
+- Tool calling definition and parsing
 - Proper error handling and fallbacks
 - Optimal audio parameters for Ultravox model
 
@@ -189,6 +178,11 @@ The diagram illustrates the flow: The Shopper interacts with the Voice UI in the
 - Product search, UI display, and navigation tools
 - Context maintenance across conversation turns
 - Error recovery with graceful degradation
+
+### Play.ht Integration
+- Standard REST API for TTS generation.
+- Handling of audio stream/data returned by Play.ht.
+- Configuration of voice parameters.
 
 ## Future Considerations
 - Voice cloning for custom assistant voices

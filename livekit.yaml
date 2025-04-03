@@ -1,0 +1,39 @@
+---
+# LiveKit server configuration
+
+port: 7880
+rtc:
+  port_range_start: 7882
+  port_range_end: 7882
+  use_external_ip: false
+
+logging:
+  level: info
+  json: false
+
+keys:
+  your_livekit_key: your_livekit_secrets
+
+# Turn Server configuration
+turn:
+  enabled: true
+  domain: localhost
+  tls_port: 7881
+  udp_port: 7882
+
+# Redis can be enabled for scalability in production
+# redis:
+#   address: redis:6379
+#   username: ""
+#   password: ""
+#   db: 0
+
+# WebHook configuration - can be used for bot triggers in the future
+# webhook:
+#   api_key: your_livekit_key
+#   urls:
+#     - http://voice-bot:3000/api/livekit/webhook
+
+# Production settings
+# https: false
+# redirect_http: false 

@@ -1,45 +1,46 @@
-version: '3.8'
+version: '3'
 
 services:
-  livekit-proxy:
-    build:
-      context: .
-      dockerfile: Dockerfile.livekit-proxy
+  # LiveKit server for WebRTC connections
+  livekit:
+    image: livekit/livekit-server:latest
     ports:
       - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    volumes:
+      - ./livekit.yaml:/livekit.yaml
+    command: --config /livekit.yaml
     environment:
-      - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}
-      - ULTRAVOX_MODEL_VERSION=${ULTRAVOX_MODEL_VERSION}
-      - NODE_ENV=production
-      - LIVEKIT_PROXY_URL=http://livekit-proxy:7880
-    restart: unless-stopped
+      - LIVEKIT_KEYS=your_livekit_key:your_livekit_secrets
+    networks:
+      - voice-assistant-network
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:7880/health"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
-      start_period: 10s
+
+  # Bot service for voice assistant
+  voice-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.livekit-proxy
+    depends_on:
+      - livekit
+    environment:
+      - NODE_ENV=production
+      - LIVEKIT_URL=ws://livekit:7880
+      - LIVEKIT_KEY=${LIVEKIT_KEY:-your_livekit_key}
+      - LIVEKIT_SECRET=${LIVEKIT_SECRET:-your_livekit_secrets}
+      - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}
+      - ULTRAVOX_MODEL_VERSION=${ULTRAVOX_MODEL_VERSION}
+      - PLAYHT_USER_ID=${PLAYHT_USER_ID}
+      - PLAYHT_SECRET_KEY=${PLAYHT_SECRET_KEY}
+      - LIVEKIT_LOG=info
+    restart: unless-stopped
     networks:
-      - app-network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    # Production resource limits
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: '0.5'
-        reservations:
-          memory: 128M
-          cpus: '0.25'
-    # Add volume for potential local development use
-    volumes:
-      - ./app/livekit-proxy.server.js:/app/livekit-proxy.server.js:ro
-      - ./app/server.js:/app/server.js:ro
+      - voice-assistant-network
 
 networks:
-  app-network:
-    driver: bridge
+  voice-assistant-network:

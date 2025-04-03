@@ -1,27 +1,23 @@
-FROM node:20-alpine
+FROM node:20-slim
 
 WORKDIR /app
 
-# Copy only necessary files
-COPY app/livekit-proxy.server.js app/server.js ./
+# Install production dependencies
+COPY package.json package-lock.json ./
+RUN npm ci --production && npm cache clean --force
 
-# Create a proper package.json with type:module
-RUN echo '{"name":"livekit-proxy","private":true,"type":"module","dependencies":{"node-fetch":"^3.3.2"},"engines":{"node":">=18.0.0"}}' > package.json
+# Copy compiled app files
+COPY app/server.js app/server.js
+COPY app/bot app/bot
 
-# Install dependencies (with production flag to minimize image size)
-RUN npm install --production=true
+# Run Node with ES modules support 
+# Set host to 0.0.0.0 to allow external connections
+# Pass env var to enable proper logging
+ENV LIVEKIT_LOG=info
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD wget -q --spider http://localhost:7880/health || exit 1
+# Run the bot service
+CMD ["node", "--experimental-modules", "app/server.js"]
 
-# Expose port
-EXPOSE 7880
-
-# Set environment variables
-ENV NODE_ENV="production"
-ENV REPLICATE_API_TOKEN=""
-ENV ULTRAVOX_MODEL_VERSION=""
-
-# Run with increased memory limits if needed
-CMD ["node", "--experimental-specifier-resolution=node", "--max-old-space-size=512", "server.js"]
+# Healthcheck disabled for now, but could be added via a health endpoint later
+# HEALTHCHECK --interval=5s --timeout=5s --start-period=5s --retries=3 \
+#  CMD curl -f http://localhost:3000/health || exit 1
